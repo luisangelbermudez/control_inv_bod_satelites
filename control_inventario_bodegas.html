@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Inventario · Bodegas Satélite Aseo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --bg:#0f1720;
+    --panel:#16212c;
+    --panel-2:#1c2934;
+    --border:#2a3947;
+    --text:#e7edf2;
+    --text-dim:#8fa3b3;
+    --accent:#2f8f6f;
+    --accent-2:#3fb491;
+    --warn:#d9963f;
+    --danger:#c25c5c;
+    --entrada:#2f8f6f;
+    --salida:#c25c5c;
+    --font-ui: 'Segoe UI', Roboto, -apple-system, sans-serif;
+    --font-mono: 'Consolas', 'SF Mono', monospace;
+  }
+  /* Tema Bquilla (4PT04): mismo estilo oscuro, pero en azul en vez de verde,
+     para que sea imposible confundir visualmente en qué bodega estás parado. */
+  body.wh-4PT04{
+    --bg:#0f1420;
+    --panel:#141d30;
+    --panel-2:#182339;
+    --border:#28365a;
+    --accent:#3f6fd8;
+    --accent-2:#5c8ce8;
+    --entrada:#3f6fd8;
+  }
+  body{ transition: background-color .25s; }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--font-ui); font-size:14px;
+  }
+  header{
+    padding:18px 24px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+    background:linear-gradient(180deg, var(--panel), var(--bg));
+  }
+  header h1{ font-size:17px; margin:0; font-weight:600; letter-spacing:.2px;}
+  header .sub{ color:var(--text-dim); font-size:12px; margin-top:2px;}
+  .warehouse-switch{ display:flex; gap:6px; background:var(--panel-2); padding:4px; border-radius:10px; border:1px solid var(--border);}
+  .warehouse-switch button{
+    border:none; background:transparent; color:var(--text-dim); padding:8px 16px; border-radius:8px;
+    font-size:13px; font-weight:600; cursor:pointer; transition:.15s;
+  }
+  .warehouse-switch button.active{ background:var(--accent); color:#fff;}
+  main{ padding:20px 24px 60px; max-width:1400px; margin:0 auto;}
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px;
+  }
+  .card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-dim); margin:0 0 12px; font-weight:700;}
+  .kpis{ display:flex; gap:10px; flex-wrap:wrap;}
+  .kpi{ flex:1; min-width:120px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 14px;}
+  .kpi .v{ font-size:22px; font-weight:700; font-family:var(--font-mono);}
+  .kpi .l{ font-size:11px; color:var(--text-dim); text-transform:uppercase; margin-top:2px;}
+  .kpi.entradas .v{ color:var(--entrada);}
+  .kpi.salidas .v{ color:var(--salida);}
+  table{ width:100%; border-collapse:collapse; font-size:13px;}
+  th{ text-align:left; padding:8px 10px; color:var(--text-dim); font-weight:600; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); font-size:11px; text-transform:uppercase;}
+  td{ padding:7px 10px; border-bottom:1px solid #1f2c37;}
+  tr:hover td{ background:#1a2733;}
+  .num{ text-align:right; font-family:var(--font-mono);}
+  .table-wrap{ max-height:480px; overflow:auto; border:1px solid var(--border); border-radius:10px;}
+  input, select, textarea{
+    background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+    border-radius:7px; padding:7px 9px; font-size:13px; font-family:var(--font-ui);
+  }
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--accent-2);}
+  input.editable-initial{ width:80px; color:var(--accent-2); font-family:var(--font-mono); font-weight:700; border-color:#2c4a3d; background:#132420;}
+  .btn{
+    background:var(--accent); color:#fff; border:none; border-radius:7px; padding:8px 14px;
+    font-size:13px; font-weight:600; cursor:pointer; transition:.15s;
+  }
+  .btn:hover{ background:var(--accent-2);}
+  .btn.secondary{ background:var(--panel-2); border:1px solid var(--border); color:var(--text);}
+  .btn.secondary:hover{ border-color:var(--accent-2); color:var(--accent-2);}
+  .btn.danger{ background:transparent; border:1px solid var(--danger); color:var(--danger); padding:4px 8px; font-size:11px;}
+  .btn.danger:hover{ background:var(--danger); color:#fff;}
+  .btn.small{ padding:5px 10px; font-size:12px;}
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;}
+  .row label{ font-size:11px; color:var(--text-dim); display:block; margin-bottom:3px;}
+  .field{ display:flex; flex-direction:column;}
+  .tag{ font-size:10px; padding:2px 7px; border-radius:20px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;}
+  .tag.entrada{ background:#173c30; color:var(--accent-2);}
+  .tag.salida{ background:#3c1e1e; color:#e08484;}
+  .tabs{ display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid var(--border);}
+  .tabs button{ background:none; border:none; color:var(--text-dim); padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;}
+  .tabs button.active{ color:var(--text); border-color:var(--accent);}
+  .tabpage{ display:none;}
+  .tabpage.active{ display:block;}
+  .helptext{ color:var(--text-dim); font-size:12px; line-height:1.5; margin:0 0 12px;}
+  .dropzone{
+    border:2px dashed var(--border); border-radius:10px; padding:22px; text-align:center; color:var(--text-dim);
+    cursor:pointer; transition:.15s; margin-bottom:10px;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:var(--accent-2); color:var(--accent-2); background:#12201c;}
+  .dropzone input{ display:none;}
+  .summary-bar{ display:flex; gap:16px; font-size:12px; color:var(--text-dim); margin-top:10px; flex-wrap:wrap;}
+  .summary-bar b{ color:var(--text); font-family:var(--font-mono);}
+  .empty{ text-align:center; color:var(--text-dim); padding:30px; font-size:13px;}
+  .toast{
+    position:fixed; bottom:22px; right:22px; background:var(--panel-2); border:1px solid var(--accent-2);
+    color:var(--text); padding:12px 18px; border-radius:9px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,.4);
+    opacity:0; transform:translateY(10px); transition:.25s; pointer-events:none; z-index:100;
+  }
+  .toast.show{ opacity:1; transform:translateY(0);}
+  .month-badge{ font-family:var(--font-mono); background:var(--panel-2); border:1px solid var(--border); padding:5px 10px; border-radius:7px; color:var(--text-dim); font-size:12px;}
+  select#materialSelect, select#materialSelectSal{ min-width:280px;}
+  .concept-note{ color:var(--text-dim); font-size:11px; margin-top:4px;}
+  ::-webkit-scrollbar{ width:10px; height:10px;}
+  ::-webkit-scrollbar-thumb{ background:#2a3947; border-radius:6px;}
+  .flex-between{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;}
+
+  /* ---- Pantalla de acceso ---- */
+  #loginScreen{
+    position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  #loginScreen .box{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:32px 30px; width:320px;
+  }
+  #loginScreen h2{ margin:0 0 4px; font-size:18px; color:var(--text);}
+  #loginScreen .sub{ color:var(--text-dim); font-size:12px; margin-bottom:20px;}
+  #loginScreen input{ width:100%; margin-bottom:10px; padding:10px 12px;}
+  #loginScreen .btn{ width:100%; padding:10px;}
+  #loginError{ color:var(--danger); font-size:12px; margin-top:8px; min-height:16px;}
+  #appRoot{ display:none; }
+  .logout-btn{ background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:7px; padding:6px 12px; font-size:12px; cursor:pointer;}
+  .logout-btn:hover{ border-color:var(--danger); color:var(--danger);}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="box">
+    <h2>Control de Inventario</h2>
+    <div class="sub">Bodegas satélite · ingresa con tu cuenta</div>
+    <input type="email" id="loginEmail" placeholder="Correo" autocomplete="username">
+    <input type="password" id="loginPassword" placeholder="Contraseña" autocomplete="current-password">
+    <button class="btn" onclick="doLogin()">Ingresar</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<div id="appRoot">
+<header>
+  <div>
+    <h1 id="mainTitle">Control de Inventario · Bodegas Satélite</h1>
+    <div class="sub" id="mainSub">Aseo Cali (2PT07) y Bquilla (4PT04) — jabones</div>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span class="month-badge" id="syncBadge" title="Estado de sincronización">⏳ Conectando…</span>
+    <span class="month-badge" id="monthBadge">JULIO 2026</span>
+    <div class="warehouse-switch">
+      <button id="btnCali" class="active" onclick="switchWarehouse('2PT07')">Cali · 2PT07</button>
+      <button id="btnBaq" onclick="switchWarehouse('4PT04')">Bquilla · 4PT04</button>
+    </div>
+    <span class="month-badge" id="userBadge" style="display:none;"></span>
+    <button class="logout-btn" onclick="doLogout()">Salir</button>
+  </div>
+</header>
+
+<main>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Resumen del mes — <span id="whName">Cali</span></h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v" id="kpiInicial">0</div><div class="l">Inv. Inicial</div></div>
+        <div class="kpi entradas"><div class="v" id="kpiEntradas">0</div><div class="l">Entradas</div></div>
+        <div class="kpi salidas"><div class="v" id="kpiSalidas">0</div><div class="l">Salidas</div></div>
+        <div class="kpi"><div class="v" id="kpiReal">0</div><div class="l">Real Inv.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Acciones</h2>
+      <div class="row">
+        <button class="btn" onclick="backupToFile()">💾 Guardar copia (.json)</button>
+        <button class="btn secondary" onclick="triggerRestore()">📂 Cargar copia (.json)</button>
+        <input type="file" id="restoreInput" accept=".json" style="display:none" onchange="restoreFromFile(this.files[0])">
+        <button class="btn secondary" onclick="exportCSV()">⬇ Exportar resumen CSV</button>
+        <button class="btn secondary" onclick="printReport()">🖨 Imprimir</button>
+        <button class="btn secondary" onclick="closeMonth()">📦 Cerrar mes y trasladar inv. inicial</button>
+      </div>
+      <p class="helptext" style="margin-top:10px;">Mira el indicador arriba a la derecha: 🟢 <b>Compartido en vivo</b> significa que todos los que abran este mismo link ven los mismos datos en tiempo real. 🟡 <b>Modo local</b> significa que aún no se configuró la sincronización y los datos solo quedan en este navegador. Usa <b>"Guardar copia (.json)"</b> cada tanto como respaldo real en archivo, sin importar el modo en que estés. "Cerrar mes" toma el Real Inv. actual de cada producto y lo deja como Inv. Inicial del mes siguiente, archivando los movimientos actuales.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="flex-between">
+      <h2 style="margin:0;">Tabla de inventario — Material / Entradas / Salidas / Real Inv</h2>
+      <span class="helptext" style="margin:0;">Edita el <b style="color:var(--accent-2)">Inv. Inicial</b> (verde) solo al iniciar el mes. Entradas y Salidas se calculan automáticamente de los movimientos registrados abajo.</span>
+    </div>
+
+    <details style="margin-bottom:12px;">
+      <summary style="cursor:pointer; color:var(--accent-2); font-size:13px; font-weight:600; padding:6px 0;">+ Crear producto nuevo</summary>
+      <div class="row" style="margin-top:10px;">
+        <div class="field"><label>Material (código SAP cliente)</label><input type="text" id="newMaterial" placeholder="Ej: 7801" style="width:120px;"></div>
+        <div class="field"><label>Ref. Siesa</label><input type="text" id="newRefSiesa" placeholder="Ej: MQ7801" style="width:120px;"></div>
+        <div class="field"><label>Producto (descripción)</label><input type="text" id="newProducto" placeholder="Ej: SERV JA UNICO NUEVO 24X220g" style="width:280px;"></div>
+        <div class="field"><label>Inv. Inicial (cajas)</label><input type="number" id="newInicial" min="0" value="0" style="width:100px;"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn" onclick="addProduct()">+ Agregar producto</button></div>
+      </div>
+      <p class="helptext" style="margin-top:6px;">El producto se agrega solo a la bodega en la que estás parado ahora mismo (<span id="newProductWhLabel">Cali</span>). Si también se vende/mueve en la otra bodega, agrégalo ahí también cambiando de bodega arriba.</p>
+    </details>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th><th>Ref. Siesa</th><th>Producto</th>
+            <th class="num">Inv. Inicial</th><th class="num">Entradas</th><th class="num">Salidas</th><th class="num">Real Inv.</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="invTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="active" onclick="switchTab('entradas')" id="tabBtnEntradas">Entradas manuales</button>
+    <button onclick="switchTab('salidas')" id="tabBtnSalidas">Salidas — archivo plano (POOL)</button>
+    <button onclick="switchTab('salidasManual')" id="tabBtnSalidasManual">Salidas manuales (TTS / SDA / TTD)</button>
+    <button onclick="switchTab('movimientos')" id="tabBtnMovimientos">Historial de movimientos</button>
+  </div>
+
+  <!-- ENTRADAS MANUALES -->
+  <div class="tabpage active" id="page-entradas">
+    <div class="card">
+      <h2>Registrar entrada</h2>
+      <p class="helptext">Facturas de venta de tu empresa (FACT), devoluciones del cliente (DNF), anulaciones de factura, o traslados que llegan a esta bodega (TTE).</p>
+      <div class="row">
+        <div class="field"><label>Fecha</label><input type="date" id="entFecha"></div>
+        <div class="field"><label>Concepto</label>
+          <select id="entConcepto">
+            <option value="FACT">FACT — Factura de venta</option>
+            <option value="DNF">DNF — Devolución del cliente</option>
+            <option value="ANULACION">ANULACIÓN — Anulación de factura</option>
+            <option value="TTE">TTE — Traslado / despacho directo (entrada)</option>
+          </select>
+        </div>
+        <div class="field"><label>Referencia (# factura / traslado)</label><input type="text" id="entRef" placeholder="Ej: FACT 87"></div>
+        <div class="field"><label>Producto</label>
+          <select id="materialSelect"></select>
+        </div>
+        <div class="field"><label>Cantidad (cajas)</label><input type="number" id="entCantidad" min="0" style="width:100px;"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn" onclick="addEntrada()">+ Agregar entrada</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Carga masiva desde Excel</h2>
+      <p class="helptext">Para facturas con muchas referencias. El Excel debe tener 3 columnas: <b>Planta</b> (Cali / Bquilla), <b>Ref. Siesa</b> y <b>Cajas</b>. Puede traer o no fila de encabezado, y puede incluir filas de ambas bodegas en el mismo archivo — cada una se registrará automáticamente en la bodega que le corresponde.</p>
+      <div class="row">
+        <div class="field"><label>Fecha (se aplica a todas las filas)</label><input type="date" id="bulkEntFecha"></div>
+        <div class="field"><label>Concepto (se aplica a todas las filas)</label>
+          <select id="bulkEntConcepto">
+            <option value="FACT">FACT — Factura de venta</option>
+            <option value="DNF">DNF — Devolución del cliente</option>
+            <option value="ANULACION">ANULACIÓN — Anulación de factura</option>
+            <option value="TTE">TTE — Traslado / despacho directo (entrada)</option>
+          </select>
+        </div>
+        <div class="field"><label>Referencia (# factura)</label><input type="text" id="bulkEntRef" placeholder="Ej: FACT 87"></div>
+      </div>
+      <div class="dropzone" id="dropzoneEntBulk" onclick="document.getElementById('bulkEntFileInput').click()">
+        📊 Haz clic o arrastra aquí el Excel de entradas (Planta · Ref. Siesa · Cajas)
+        <input type="file" id="bulkEntFileInput" accept=".xlsx,.xls,.csv" onchange="handleBulkFile(this.files[0], 'entrada')">
+      </div>
+      <div id="bulkEntPreview"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Entradas registradas este mes</h2>
+      <div class="table-wrap" id="entradasListWrap"></div>
+    </div>
+  </div>
+
+  <!-- SALIDAS ARCHIVO PLANO -->
+  <div class="tabpage" id="page-salidas">
+    <div class="card">
+      <h2>Cargar archivo plano del cliente (facturación POOL)</h2>
+      <p class="helptext">Sube el .txt que te envía el cliente (uno por bodega: Yumbo → Cali, Barranquilla → Bquilla). Se leerá el <b>Material</b> (columna 10) y las <b>Cajas</b> (columna 19) de cada línea, se sumará por producto, y se registrará como una salida "POOL" fechada con la fecha del pedido.</p>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        📄 Haz clic o arrastra aquí el archivo plano (.txt)
+        <input type="file" id="fileInput" accept=".txt,.csv" onchange="handleFile(this.files[0])">
+      </div>
+      <div id="filePreview"></div>
+    </div>
+  </div>
+
+  <!-- SALIDAS MANUALES -->
+  <div class="tabpage" id="page-salidasManual">
+    <div class="card">
+      <h2>Registrar salida manual</h2>
+      <p class="helptext">Traslados entre plantas y despachos directos (TTS: sale de Cali hacia Bquilla), muestras de producto para venta (SDA), u otro concepto (TTD).</p>
+      <div class="row">
+        <div class="field"><label>Fecha</label><input type="date" id="salFecha"></div>
+        <div class="field"><label>Concepto</label>
+          <select id="salConcepto">
+            <option value="TTS">TTS — Traslado / despacho directo (salida)</option>
+            <option value="SDA">SDA — Muestra de producto</option>
+            <option value="TTD">TTD — Otro traslado / despacho directo</option>
+            <option value="POOL_MANUAL">POOL — Ajuste manual de facturación cliente</option>
+          </select>
+        </div>
+        <div class="field"><label>Referencia</label><input type="text" id="salRef" placeholder="Ej: TTS-78 / SDA 6320"></div>
+        <div class="field"><label>Producto</label>
+          <select id="materialSelectSal"></select>
+        </div>
+        <div class="field"><label>Cantidad (cajas)</label><input type="number" id="salCantidad" min="0" style="width:100px;"></div>
+        <div class="field"><label>&nbsp;</label><button class="btn" onclick="addSalidaManual()">+ Agregar salida</button></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Carga masiva desde Excel</h2>
+      <p class="helptext">Para facturaciones con muchas referencias. El Excel debe tener 3 columnas: <b>Planta</b> (Cali / Bquilla), <b>Ref. Siesa</b> y <b>Cajas</b>. Puede traer o no fila de encabezado, y puede incluir filas de ambas bodegas en el mismo archivo.</p>
+      <div class="row">
+        <div class="field"><label>Fecha (se aplica a todas las filas)</label><input type="date" id="bulkSalFecha"></div>
+        <div class="field"><label>Concepto (se aplica a todas las filas)</label>
+          <select id="bulkSalConcepto">
+            <option value="TTS">TTS — Traslado / despacho directo (salida)</option>
+            <option value="SDA">SDA — Muestra de producto</option>
+            <option value="TTD">TTD — Otro traslado / despacho directo</option>
+            <option value="POOL_MANUAL">POOL — Ajuste manual de facturación cliente</option>
+          </select>
+        </div>
+        <div class="field"><label>Referencia</label><input type="text" id="bulkSalRef" placeholder="Ej: TTS-78"></div>
+      </div>
+      <div class="dropzone" id="dropzoneSalBulk" onclick="document.getElementById('bulkSalFileInput').click()">
+        📊 Haz clic o arrastra aquí el Excel de salidas (Planta · Ref. Siesa · Cajas)
+        <input type="file" id="bulkSalFileInput" accept=".xlsx,.xls,.csv" onchange="handleBulkFile(this.files[0], 'salida')">
+      </div>
+      <div id="bulkSalPreview"></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2>Salidas manuales registradas este mes</h2>
+      <div class="table-wrap" id="salidasManualListWrap"></div>
+    </div>
+  </div>
+
+  <!-- HISTORIAL -->
+  <div class="tabpage" id="page-movimientos">
+    <div class="card">
+      <h2>Historial completo de movimientos — <span id="whNameHist">Cali</span></h2>
+      <div class="table-wrap" id="historialWrap"></div>
+    </div>
+  </div>
+
+</main>
+
+</div>
+<!-- fin #appRoot -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ======================= MAESTRO DE PRODUCTOS (extraído del archivo original) ======================= */
+const PRODUCT_MASTER = {
+  "2PT07": [
+    {material:"7612", refSiesa:"7069", producto:"SERV JA UN PLUS FLORAL 10X3X250 PRE.ESP", inicial:151},
+    {material:"7624", refSiesa:"7557", producto:"SERV JA UNICO TRIPLE PODER 12X380g (SE)", inicial:1092},
+    {material:"7627", refSiesa:"7552", producto:"SERV JA UNICO PLUS LAVANDA24X220g", inicial:2997},
+    {material:"7630", refSiesa:"7551", producto:"SERV JA UNICO PLUS LIMON24X220g", inicial:377},
+    {material:"7632", refSiesa:"7550", producto:"SERV JA UNICO PLUS LIMON24X280g", inicial:234},
+    {material:"7634", refSiesa:"7553", producto:"SERV JA UNICO PLUS FLORAL24X220g", inicial:1712},
+    {material:"7705", refSiesa:"7026", producto:"SERV OF JA UNICO PLUS10X3X250g(PE)LAVAND", inicial:874},
+    {material:"7710", refSiesa:"818", producto:"SERV JA UNICO ACANALADO 25X200g", inicial:13992},
+    {material:"7716", refSiesa:"7027", producto:"SERV JA FAMA BEBE 24X250g", inicial:57},
+    {material:"7730", refSiesa:"7544", producto:"SERV JA LEMON36X115g VERDE", inicial:207},
+    {material:"7731", refSiesa:"7545", producto:"SERV JA LEMON36X115g MARFIL", inicial:172},
+    {material:"7732", refSiesa:"7546", producto:"SERV JA LEMON36X115g ROSADO", inicial:368},
+    {material:"7733", refSiesa:"7548", producto:"SERV JA LEMON36X115g SURTIDO", inicial:6026},
+    {material:"7734", refSiesa:"7549", producto:"SERV JA LEMON12X3X115g SURTIDO", inicial:2317},
+    {material:"7739", refSiesa:"7028", producto:"SERV JA FAMA TOTAL 24X250g", inicial:1794},
+    {material:"7785", refSiesa:"981", producto:"SERV OF JA UNICO PLUS 8X3X300g(PE)LIMON", inicial:370},
+    {material:"7795", refSiesa:"7324", producto:"SERV JA UNICO PLUS LIMON 10X3X250 PRE. ES", inicial:17}
+  ],
+  "4PT04": [
+    {material:"7612", refSiesa:"7069", producto:"SERV JA UN PLUS FLORAL 10X3X250 PRE.ESP", inicial:1},
+    {material:"7619", refSiesa:"7532", producto:"JA UNICO 3PODER MULTIUSOS 24X280GR(EV)", inicial:178},
+    {material:"7624", refSiesa:"7557", producto:"SERV JA UNICO TRIPLE PODER 12X380g (SE)", inicial:0},
+    {material:"7627", refSiesa:"7552", producto:"SERV JA UNICO PLUS LAVANDA24X220g", inicial:5350},
+    {material:"7630", refSiesa:"7551", producto:"SERV JA UNICO PLUS LIMON24X220g", inicial:2288},
+    {material:"7632", refSiesa:"7550", producto:"SERV JA UNICO PLUS LIMON24X280g", inicial:22474},
+    {material:"7634", refSiesa:"7553", producto:"SERV JA UNICO PLUS FLORAL24X220g", inicial:367},
+    {material:"7639", refSiesa:"7555", producto:"JA UNICO BARRA MARRON 48X140GR", inicial:5856},
+    {material:"7705", refSiesa:"7026", producto:"SERV OF JA UNICO PLUS10X3X250g(PE)LAVAND", inicial:546},
+    {material:"7710", refSiesa:"818", producto:"SERV JA UNICO ACANALADO 25X200g", inicial:44306},
+    {material:"7716", refSiesa:"7027", producto:"SERV JA FAMA BEBE 24X250g", inicial:3246},
+    {material:"7730", refSiesa:"7544", producto:"SERV JA LEMON36X115g VERDE", inicial:111},
+    {material:"7731", refSiesa:"7545", producto:"SERV JA LEMON36X115g MARFIL", inicial:103},
+    {material:"7732", refSiesa:"7546", producto:"SERV JA LEMON36X115g ROSADO", inicial:118},
+    {material:"7733", refSiesa:"7548", producto:"SERV JA LEMON36X115g SURTIDO", inicial:10652},
+    {material:"7734", refSiesa:"7549", producto:"SERV JA LEMON12X3X115g SURTIDO", inicial:792},
+    {material:"7739", refSiesa:"7028", producto:"SERV JA FAMA TOTAL 24X250g", inicial:1963},
+    {material:"7785", refSiesa:"981", producto:"SERV OF JA UNICO PLUS 8X3X300g(PE)LIMON", inicial:0},
+    {material:"7795", refSiesa:"7324", producto:"SERV JA UNICO PLUS LIMON 10X3X250 PRE. ES", inicial:2},
+    {material:"7656", refSiesa:"7692", producto:"SERV JA UNICO ACAN 3PODER 25X200G ENV", inicial:8370}
+  ]
+};
+const WH_NAMES = {"2PT07":"Cali (Aseo Cali)", "4PT04":"Barranquilla (Bquilla)"};
+const MESES_ES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+function currentMonthKey(){
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+}
+function currentMonthLabel(){
+  const now = new Date();
+  return `${MESES_ES[now.getMonth()]} ${now.getFullYear()}`;
+}
+let CURRENT_MONTH = currentMonthKey(); // ej: "2026-08" — se recalcula solo, según la fecha de tu computador
+
+let state = {
+  warehouse: "2PT07",
+  data: {} // filled from storage: { "2PT07": {month, products:[...], entradas:[...], salidas:[...]}, "4PT04": {...} }
+};
+
+/* ======================= CONFIGURACIÓN FIREBASE (sincronización entre varios usuarios) =======================
+   1) Ve a https://console.firebase.google.com → "Agregar proyecto" (gratis).
+   2) Dentro del proyecto: "Compilación" → "Realtime Database" → "Crear base de datos"
+      → elige una ubicación → empieza en "modo de prueba" (test mode).
+   3) Ve a "Configuración del proyecto" (ícono de engranaje) → en "Tus apps" agrega una app Web (</>)
+      → copia el objeto firebaseConfig que te muestra → pégalo REEMPLAZANDO el de abajo.
+   4) Guarda este archivo y súbelo así a GitHub / GitHub Pages. Todas las personas que abran el link
+      van a compartir los mismos datos, en vivo.
+   Mientras no reemplaces esto, la app sigue funcionando normalmente pero SOLO en este navegador
+   (modo local), como hasta ahora.
+================================================================================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAwPo3gBzBERnPeKQQfMe9_emV28Wu4Fkg",
+  authDomain: "inventario-jabones.firebaseapp.com",
+  databaseURL: "https://inventario-jabones-default-rtdb.firebaseio.com",
+  projectId: "inventario-jabones",
+  storageBucket: "inventario-jabones.firebasestorage.app",
+  messagingSenderId: "896667930707",
+  appId: "1:896667930707:web:867cf47e82c949d95976a6"
+};
+
+let firebaseReady = false;
+let fbDb = null;
+let fbAuth = null;
+try{
+  if(firebaseConfig.apiKey !== "TU_API_KEY" && typeof firebase !== 'undefined'){
+    firebase.initializeApp(firebaseConfig);
+    fbDb = firebase.database();
+    fbAuth = firebase.auth();
+    firebaseReady = true;
+  }
+}catch(e){ console.error("No se pudo inicializar Firebase", e); firebaseReady = false; }
+
+/* ======================= AUTENTICACIÓN ======================= */
+function doLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errBox = document.getElementById('loginError');
+  errBox.textContent = '';
+  if(!email || !password){ errBox.textContent = 'Ingresa correo y contraseña.'; return; }
+  if(!firebaseReady){ errBox.textContent = 'La app aún no está conectada a Firebase.'; return; }
+  fbAuth.signInWithEmailAndPassword(email, password)
+    .catch(err=>{
+      const msgs = {
+        'auth/invalid-email':'Correo inválido.',
+        'auth/user-not-found':'No existe una cuenta con ese correo.',
+        'auth/wrong-password':'Contraseña incorrecta.',
+        'auth/invalid-credential':'Correo o contraseña incorrectos.',
+        'auth/too-many-requests':'Demasiados intentos. Espera un momento e intenta de nuevo.'
+      };
+      errBox.textContent = msgs[err.code] || ('Error: ' + err.message);
+    });
+}
+
+function doLogout(){
+  if(firebaseReady){ fbAuth.signOut(); }
+}
+
+// Permite iniciar sesión con Enter en vez de solo con el botón
+document.addEventListener('DOMContentLoaded', ()=>{
+  const pw = document.getElementById('loginPassword');
+  if(pw) pw.addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+});
+
+let appStarted = false;
+function onAuthed(user){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+  const badge = document.getElementById('userBadge');
+  badge.style.display = 'inline-block';
+  badge.textContent = '👤 ' + user.email;
+  if(!appStarted){ appStarted = true; init(); }
+}
+
+function onLoggedOut(){
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPassword').value = '';
+}
+
+if(firebaseReady){
+  fbAuth.onAuthStateChanged(user=>{
+    if(user) onAuthed(user); else onLoggedOut();
+  });
+} else {
+  // Sin Firebase configurado: no hay a quién autenticar, se entra directo (modo local, como antes)
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+}
+
+function setSyncBadge(){
+  const badge = document.getElementById('syncBadge');
+  if(firebaseReady){
+    badge.textContent = '🟢 Compartido en vivo';
+    badge.title = 'Conectado a Firebase — los cambios se ven entre todos los usuarios';
+  } else {
+    badge.textContent = '🟡 Modo local (sin compartir)';
+    badge.title = 'Firebase no está configurado todavía — los datos solo se guardan en este navegador';
+  }
+}
+
+/* ======================= STORAGE ======================= */
+// Si Firebase está configurado: los datos viven en la nube y se sincronizan en vivo entre todos.
+// Si no: los datos se guardan en localStorage de este navegador (como antes).
+// Respaldo real en archivo, en ambos casos: botones "Guardar copia (.json)" / "Cargar copia (.json)".
+function storageKey(wh){ return `inventario:${wh}:${CURRENT_MONTH}`; }
+
+function prevMonthKey(monthKey){
+  let [y,m] = monthKey.split('-').map(Number);
+  m -= 1; if(m===0){ m=12; y-=1; }
+  return `${y}-${String(m).padStart(2,'0')}`;
+}
+
+function freshFromMaster(wh){
+  return {
+    products: PRODUCT_MASTER[wh].map(p => ({material:p.material, refSiesa:p.refSiesa, producto:p.producto, inicial:p.inicial})),
+    entradas: [],
+    salidas: []
+  };
+}
+
+function rollOverFromPrev(wh, prevData){
+  const totalsEnt={}, totalsSal={};
+  prevData.products.forEach(p=>{ totalsEnt[p.material]=0; totalsSal[p.material]=0; });
+  (prevData.entradas||[]).forEach(m=>{ totalsEnt[m.material]=(totalsEnt[m.material]||0)+Number(m.cantidad); });
+  (prevData.salidas||[]).forEach(m=>{ totalsSal[m.material]=(totalsSal[m.material]||0)+Number(m.cantidad); });
+  return {
+    products: prevData.products.map(p=>({
+      material:p.material, refSiesa:p.refSiesa, producto:p.producto,
+      inicial: Number(p.inicial) + (totalsEnt[p.material]||0) - (totalsSal[p.material]||0)
+    })),
+    entradas: [], salidas: []
+  };
+}
+
+async function loadWarehouseData(wh){
+  if(firebaseReady){
+    try{
+      const snap = await fbDb.ref(storageKey(wh)).once('value');
+      if(snap.exists()) return normalizeLoaded(snap.val());
+      const prevSnap = await fbDb.ref(`inventario:${wh}:${prevMonthKey(CURRENT_MONTH)}`).once('value');
+      if(prevSnap.exists()) return rollOverFromPrev(wh, normalizeLoaded(prevSnap.val()));
+      return freshFromMaster(wh);
+    }catch(e){
+      console.error("Error leyendo Firebase, uso localStorage temporalmente", e);
+    }
+  }
+  try{
+    const raw = localStorage.getItem(storageKey(wh));
+    if(raw) return JSON.parse(raw);
+    const prevRaw = localStorage.getItem(`inventario:${wh}:${prevMonthKey(CURRENT_MONTH)}`);
+    if(prevRaw) return rollOverFromPrev(wh, JSON.parse(prevRaw));
+  }catch(e){ console.error("No se pudo leer localStorage", e); }
+  return freshFromMaster(wh);
+}
+
+// Firebase no permite arrays con huecos ni bien las listas largas; guardamos entradas/salidas
+// como objetos por id en vez de arrays, y los normalizamos de vuelta a arrays al leer.
+function normalizeLoaded(val){
+  const toArray = v => v ? Object.values(v) : [];
+  return {
+    products: toArray(val.products),
+    entradas: toArray(val.entradas),
+    salidas: toArray(val.salidas)
+  };
+}
+function toFirebaseShape(data){
+  const toObj = arr => { const o={}; (arr||[]).forEach((item,i)=>{ o[item.id || ('p'+i)] = item; }); return o; };
+  return {
+    products: toObj(data.products.map((p,i)=>({...p, id:p.material}))),
+    entradas: toObj(data.entradas),
+    salidas: toObj(data.salidas)
+  };
+}
+
+async function saveWarehouseData(wh){
+  if(firebaseReady){
+    try{
+      await fbDb.ref(storageKey(wh)).set(toFirebaseShape(state.data[wh]));
+    }catch(e){
+      console.error("Error guardando en Firebase", e);
+      showToast("⚠ No se pudo sincronizar. Revisa tu conexión a internet.");
+    }
+  }
+  try{
+    localStorage.setItem(storageKey(wh), JSON.stringify(state.data[wh])); // respaldo local siempre
+  }catch(e){ /* silencioso */ }
+}
+
+/* ---- Escucha en vivo: si otra persona cambia algo, se actualiza tu pantalla sola ---- */
+function attachRealtimeListeners(){
+  if(!firebaseReady) return;
+  ['2PT07','4PT04'].forEach(wh=>{
+    fbDb.ref(storageKey(wh)).on('value', snap=>{
+      if(!snap.exists()) return;
+      state.data[wh] = normalizeLoaded(snap.val());
+      if(wh===state.warehouse){ populateMaterialSelects(); render(); }
+    });
+  });
+}
+
+/* ---- Respaldo manual en archivo .json (independiente del navegador y de Firebase) ---- */
+function backupToFile(){
+  const payload = {
+    exportado: new Date().toISOString(),
+    mes: CURRENT_MONTH,
+    data: state.data
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `respaldo_inventario_${CURRENT_MONTH}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✓ Copia de respaldo descargada');
+}
+
+function triggerRestore(){ document.getElementById('restoreInput').click(); }
+
+async function restoreFromFile(file){
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    if(!payload.data || !payload.data['2PT07'] || !payload.data['4PT04']) throw new Error('Formato inválido');
+    if(!confirm('Esto reemplazará los datos actuales de ambas bodegas con los del archivo de respaldo (para todos, si está compartido). ¿Continuar?')) return;
+    state.data = payload.data;
+    await saveWarehouseData('2PT07');
+    await saveWarehouseData('4PT04');
+    populateMaterialSelects();
+    render();
+    showToast('✓ Datos restaurados desde el respaldo');
+  }catch(e){
+    console.error(e);
+    alert('No se pudo leer el archivo de respaldo. Verifica que sea un .json exportado desde esta misma app.');
+  }
+}
+
+/* ======================= INIT ======================= */
+async function init(){
+  setSyncBadge();
+  applyWarehouseTheme(state.warehouse);
+  document.getElementById('monthBadge').textContent = currentMonthLabel();
+  document.getElementById('newProductWhLabel').textContent = WH_NAMES[state.warehouse];
+  state.data["2PT07"] = await loadWarehouseData("2PT07");
+  state.data["4PT04"] = await loadWarehouseData("4PT04");
+  populateMaterialSelects();
+  document.getElementById('entFecha').valueAsDate = new Date();
+  document.getElementById('salFecha').valueAsDate = new Date();
+  render();
+  attachRealtimeListeners();
+}
+
+function populateMaterialSelects(){
+  const wh = state.warehouse;
+  const products = state.data[wh].products;
+  for(const selId of ['materialSelect','materialSelectSal']){
+    const sel = document.getElementById(selId);
+    sel.innerHTML = products.map(p => `<option value="${p.material}">${p.refSiesa} — ${p.producto}</option>`).join('');
+  }
+}
+
+const WH_TITLES = {
+  "2PT07": "Control Inventario Bodega Satélite Aseo Cali",
+  "4PT04": "Control Inventario Bodega Satélite Barranquilla"
+};
+
+function applyWarehouseTheme(wh){
+  document.getElementById('mainTitle').textContent = WH_TITLES[wh];
+  document.getElementById('mainSub').textContent = wh==='2PT07'
+    ? 'Aseo Cali — 2PT07 — jabones'
+    : 'Bquilla — 4PT04 — jabones';
+  document.body.classList.toggle('wh-4PT04', wh==='4PT04');
+}
+
+function switchWarehouse(wh){
+  state.warehouse = wh;
+  document.getElementById('btnCali').classList.toggle('active', wh==='2PT07');
+  document.getElementById('btnBaq').classList.toggle('active', wh==='4PT04');
+  document.getElementById('newProductWhLabel').textContent = WH_NAMES[wh];
+  applyWarehouseTheme(wh);
+  populateMaterialSelects();
+  render();
+}
+
+function switchTab(tab){
+  const tabs = ['entradas','salidas','salidasManual','movimientos'];
+  tabs.forEach(t=>{
+    document.getElementById('page-'+t).classList.toggle('active', t===tab);
+    document.getElementById('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active', t===tab);
+  });
+  if(tab==='movimientos') renderHistorial();
+}
+
+/* ======================= CALCULOS ======================= */
+function computeTotals(wh){
+  const d = state.data[wh];
+  const totalsEnt = {}, totalsSal = {};
+  d.products.forEach(p=>{ totalsEnt[p.material]=0; totalsSal[p.material]=0; });
+  d.entradas.forEach(m=>{ totalsEnt[m.material] = (totalsEnt[m.material]||0) + Number(m.cantidad); });
+  d.salidas.forEach(m=>{ totalsSal[m.material] = (totalsSal[m.material]||0) + Number(m.cantidad); });
+  return {totalsEnt, totalsSal};
+}
+
+/* ======================= RENDER ======================= */
+function render(){
+  const wh = state.warehouse;
+  const d = state.data[wh];
+  document.getElementById('whName').textContent = WH_NAMES[wh];
+  document.getElementById('whNameHist').textContent = WH_NAMES[wh];
+
+  const {totalsEnt, totalsSal} = computeTotals(wh);
+
+  let sumInicial=0, sumEnt=0, sumSal=0, sumReal=0;
+  const rows = d.products.map(p=>{
+    const ent = totalsEnt[p.material]||0;
+    const sal = totalsSal[p.material]||0;
+    const real = Number(p.inicial) + ent - sal;
+    sumInicial += Number(p.inicial); sumEnt += ent; sumSal += sal; sumReal += real;
+    return `<tr>
+      <td>${p.material}</td>
+      <td>${p.refSiesa}</td>
+      <td>${p.producto}</td>
+      <td class="num"><input class="editable-initial" type="number" value="${p.inicial}" onchange="updateInicial('${p.material}', this.value)"></td>
+      <td class="num" style="color:var(--entrada)">${ent.toLocaleString('es-CO')}</td>
+      <td class="num" style="color:var(--salida)">${sal.toLocaleString('es-CO')}</td>
+      <td class="num" style="font-weight:700">${real.toLocaleString('es-CO')}</td>
+      <td><button class="btn danger" onclick="deleteProduct('${p.material}')" title="Eliminar producto">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('invTableBody').innerHTML = rows || `<tr><td colspan="8" class="empty">Sin productos</td></tr>`;
+
+  document.getElementById('kpiInicial').textContent = sumInicial.toLocaleString('es-CO');
+  document.getElementById('kpiEntradas').textContent = sumEnt.toLocaleString('es-CO');
+  document.getElementById('kpiSalidas').textContent = sumSal.toLocaleString('es-CO');
+  document.getElementById('kpiReal').textContent = sumReal.toLocaleString('es-CO');
+
+  renderEntradasList();
+  renderSalidasManualList();
+  if(document.getElementById('page-movimientos').classList.contains('active')) renderHistorial();
+}
+
+function productName(wh, material){
+  const p = state.data[wh].products.find(x=>x.material===material);
+  return p ? p.producto : material;
+}
+
+function renderEntradasList(){
+  const wh = state.warehouse;
+  const list = state.data[wh].entradas.slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  if(list.length===0){
+    document.getElementById('entradasListWrap').innerHTML = `<div class="empty">Aún no hay entradas registradas este mes.</div>`;
+    return;
+  }
+  document.getElementById('entradasListWrap').innerHTML = `
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <tbody>${list.map(m=>`
+      <tr>
+        <td>${m.fecha}</td>
+        <td><span class="tag entrada">${m.concepto}</span></td>
+        <td>${m.ref||'—'}</td>
+        <td>${productName(wh, m.material)}</td>
+        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td><button class="btn danger" onclick="deleteMovimiento('entradas','${m.id}')">Eliminar</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderSalidasManualList(){
+  const wh = state.warehouse;
+  const list = state.data[wh].salidas.filter(m=>m.origen!=='archivo_plano').slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  if(list.length===0){
+    document.getElementById('salidasManualListWrap').innerHTML = `<div class="empty">Aún no hay salidas manuales registradas este mes.</div>`;
+    return;
+  }
+  document.getElementById('salidasManualListWrap').innerHTML = `
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <tbody>${list.map(m=>`
+      <tr>
+        <td>${m.fecha}</td>
+        <td><span class="tag salida">${m.concepto}</span></td>
+        <td>${m.ref||'—'}</td>
+        <td>${productName(wh, m.material)}</td>
+        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td><button class="btn danger" onclick="deleteMovimiento('salidas','${m.id}')">Eliminar</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderHistorial(){
+  const wh = state.warehouse;
+  const d = state.data[wh];
+  const all = [
+    ...d.entradas.map(m=>({...m, tipo:'entrada'})),
+    ...d.salidas.map(m=>({...m, tipo:'salida'}))
+  ].sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  if(all.length===0){
+    document.getElementById('historialWrap').innerHTML = `<div class="empty">Sin movimientos registrados este mes.</div>`;
+    return;
+  }
+  document.getElementById('historialWrap').innerHTML = `
+    <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <tbody>${all.map(m=>`
+      <tr>
+        <td>${m.fecha}</td>
+        <td><span class="tag ${m.tipo}">${m.tipo}</span></td>
+        <td>${m.concepto}</td>
+        <td>${m.ref||'—'}</td>
+        <td>${productName(wh, m.material)}</td>
+        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td><button class="btn danger" onclick="deleteMovimiento('${m.tipo==='entrada'?'entradas':'salidas'}','${m.id}')">Eliminar</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+/* ======================= ACCIONES ======================= */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+async function updateInicial(material, value){
+  const wh = state.warehouse;
+  const p = state.data[wh].products.find(x=>x.material===material);
+  if(p){ p.inicial = Number(value)||0; await saveWarehouseData(wh); render(); }
+}
+
+async function addProduct(){
+  const wh = state.warehouse;
+  const material = document.getElementById('newMaterial').value.trim();
+  const refSiesa = document.getElementById('newRefSiesa').value.trim();
+  const producto = document.getElementById('newProducto').value.trim();
+  const inicial = Number(document.getElementById('newInicial').value) || 0;
+
+  if(!material || !refSiesa || !producto){
+    showToast('⚠ Completa Material, Ref. Siesa y Producto.');
+    return;
+  }
+  if(state.data[wh].products.some(p=>p.material===material)){
+    showToast('⚠ Ya existe un producto con ese código Material en esta bodega.');
+    return;
+  }
+  state.data[wh].products.push({material, refSiesa, producto, inicial});
+  await saveWarehouseData(wh);
+  populateMaterialSelects();
+  document.getElementById('newMaterial').value='';
+  document.getElementById('newRefSiesa').value='';
+  document.getElementById('newProducto').value='';
+  document.getElementById('newInicial').value='0';
+  showToast(`✓ Producto ${material} agregado a ${WH_NAMES[wh]}`);
+  render();
+}
+
+async function deleteProduct(material){
+  const wh = state.warehouse;
+  const tieneMovs = state.data[wh].entradas.some(m=>m.material===material) || state.data[wh].salidas.some(m=>m.material===material);
+  if(tieneMovs){
+    showToast('⚠ No se puede eliminar: ya tiene movimientos registrados este mes.');
+    return;
+  }
+  if(!confirm('¿Eliminar este producto del maestro de esta bodega?')) return;
+  state.data[wh].products = state.data[wh].products.filter(p=>p.material!==material);
+  await saveWarehouseData(wh);
+  populateMaterialSelects();
+  render();
+}
+
+async function addEntrada(){
+  const wh = state.warehouse;
+  const fecha = document.getElementById('entFecha').value;
+  const concepto = document.getElementById('entConcepto').value;
+  const ref = document.getElementById('entRef').value.trim();
+  const material = document.getElementById('materialSelect').value;
+  const cantidad = Number(document.getElementById('entCantidad').value);
+  if(!fecha || !cantidad || cantidad<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
+  state.data[wh].entradas.push({id:uid(), fecha, concepto, ref, material, cantidad});
+  await saveWarehouseData(wh);
+  document.getElementById('entCantidad').value='';
+  document.getElementById('entRef').value='';
+  showToast('✓ Entrada registrada');
+  render();
+}
+
+async function addSalidaManual(){
+  const wh = state.warehouse;
+  const fecha = document.getElementById('salFecha').value;
+  const concepto = document.getElementById('salConcepto').value;
+  const ref = document.getElementById('salRef').value.trim();
+  const material = document.getElementById('materialSelectSal').value;
+  const cantidad = Number(document.getElementById('salCantidad').value);
+  if(!fecha || !cantidad || cantidad<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
+  state.data[wh].salidas.push({id:uid(), fecha, concepto, ref, material, cantidad, origen:'manual'});
+  await saveWarehouseData(wh);
+  document.getElementById('salCantidad').value='';
+  document.getElementById('salRef').value='';
+  showToast('✓ Salida registrada');
+  render();
+}
+
+async function deleteMovimiento(tipo, id){
+  const wh = state.warehouse;
+  state.data[wh][tipo] = state.data[wh][tipo].filter(m=>m.id!==id);
+  await saveWarehouseData(wh);
+  showToast('Movimiento eliminado');
+  render();
+}
+
+async function closeMonth(){
+  const wh = state.warehouse;
+  if(!confirm(`¿Cerrar el mes para ${WH_NAMES[wh]}? El Real Inv. actual pasará a ser el nuevo Inv. Inicial y se limpiarán las entradas/salidas del mes.`)) return;
+  const {totalsEnt, totalsSal} = computeTotals(wh);
+  state.data[wh].products.forEach(p=>{
+    const ent = totalsEnt[p.material]||0, sal = totalsSal[p.material]||0;
+    p.inicial = Number(p.inicial) + ent - sal;
+  });
+  state.data[wh].entradas = [];
+  state.data[wh].salidas = [];
+  await saveWarehouseData(wh);
+  showToast('✓ Mes cerrado. Inventario inicial actualizado.');
+  render();
+}
+
+/* ======================= CARGA DE ARCHIVO PLANO ======================= */
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{
+  e.preventDefault(); dz.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const buf = e.target.result;
+    let text;
+    try{
+      text = new TextDecoder('iso-8859-1').decode(buf);
+    }catch(err){
+      text = new TextDecoder('utf-8').decode(buf);
+    }
+    parseFlatFile(text, file.name);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseFlatFile(text, filename){
+  const wh = state.warehouse;
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+  const sums = {}; // material -> cantidad
+  let fechaPedido = null;
+  let bodegaDetectada = null;
+  let lineasLeidas = 0, lineasIgnoradas = 0;
+
+  lines.forEach(line=>{
+    const cols = line.split('|');
+    if(cols.length < 19) { lineasIgnoradas++; return; }
+    const bodegaCliente = cols[1] ? cols[1].trim() : '';
+    const fecha = cols[8] ? cols[8].trim() : '';
+    const material = cols[9] ? cols[9].trim() : '';
+    const cantidad = Number(cols[18]);
+    if(!material || isNaN(cantidad)){ lineasIgnoradas++; return; }
+    sums[material] = (sums[material]||0) + cantidad;
+    if(!fechaPedido) fechaPedido = fecha;
+    if(!bodegaDetectada) bodegaDetectada = bodegaCliente;
+    lineasLeidas++;
+  });
+
+  // convert fecha DD/MM/YYYY -> YYYY-MM-DD
+  let fechaISO = new Date().toISOString().slice(0,10);
+  if(fechaPedido && /\d{2}\/\d{2}\/\d{4}/.test(fechaPedido)){
+    const [dd,mm,yyyy] = fechaPedido.split('/');
+    fechaISO = `${yyyy}-${mm}-${dd}`;
+  }
+
+  const materiales = Object.keys(sums);
+  const knownProducts = new Set(state.data[wh].products.map(p=>p.material));
+  const noEncontrados = materiales.filter(m=>!knownProducts.has(m));
+
+  let previewHtml = `<div class="card" style="margin-top:10px;">
+    <h2>Vista previa — ${filename}</h2>
+    <p class="helptext">Bodega detectada en el archivo: <b>${bodegaDetectada||'—'}</b> · Fecha del pedido: <b>${fechaPedido||'—'}</b> · Líneas leídas: <b>${lineasLeidas}</b>${lineasIgnoradas?` · Ignoradas: <b>${lineasIgnoradas}</b>`:''}</p>
+    <div class="table-wrap" style="max-height:320px;">
+      <table><thead><tr><th>Material</th><th>Producto</th><th class="num">Cajas (suma)</th></tr></thead>
+      <tbody>${materiales.map(m=>`<tr><td>${m}</td><td>${productName(wh,m)}${!knownProducts.has(m)?' <span style="color:var(--warn)">(no está en el maestro de '+WH_NAMES[wh]+')</span>':''}</td><td class="num">${sums[m].toLocaleString('es-CO')}</td></tr>`).join('')}</tbody></table>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" onclick='confirmImport(${JSON.stringify(sums)}, "${fechaISO}", "${filename.replace(/"/g,'')}")'>✓ Confirmar y registrar como salidas (POOL)</button>
+      <button class="btn secondary" onclick="document.getElementById('filePreview').innerHTML=''">Cancelar</button>
+    </div>
+    ${noEncontrados.length?`<p class="concept-note" style="color:var(--warn)">⚠ ${noEncontrados.length} material(es) del archivo no están en el maestro de esta bodega y no se importarán: ${noEncontrados.join(', ')}. Verifica que seleccionaste la bodega correcta (${WH_NAMES[wh]}).</p>`:''}
+  </div>`;
+
+  document.getElementById('filePreview').innerHTML = previewHtml;
+}
+
+async function confirmImport(sums, fechaISO, filename){
+  const wh = state.warehouse;
+  const knownProducts = new Set(state.data[wh].products.map(p=>p.material));
+  let count = 0;
+  Object.keys(sums).forEach(material=>{
+    if(!knownProducts.has(material)) return;
+    state.data[wh].salidas.push({
+      id: uid(), fecha: fechaISO, concepto:'POOL', ref: filename, material, cantidad: sums[material], origen:'archivo_plano'
+    });
+    count++;
+  });
+  await saveWarehouseData(wh);
+  document.getElementById('filePreview').innerHTML = `<div class="card" style="margin-top:10px;"><p style="color:var(--accent-2)">✓ Se registraron ${count} salidas POOL desde ${filename}.</p></div>`;
+  showToast(`✓ ${count} salidas importadas`);
+  render();
+}
+
+/* ======================= CARGA MASIVA EXCEL (Planta · Ref. Siesa · Cajas) — entradas y salidas manuales ======================= */
+function normalizePlanta(v){
+  const s = String(v||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  if(/2PT07|CALI|YUMBO/.test(s)) return '2PT07';
+  if(/4PT04|BAQ|BARRANQ|BQUILLA/.test(s)) return '4PT04';
+  return null;
+}
+
+function detectBulkColumns(matrix){
+  if(matrix.length===0) return {startRow:0, colPlanta:0, colRef:1, colCajas:2};
+  const first = matrix[0].map(v=>String(v||'').toLowerCase());
+  let colPlanta=-1, colRef=-1, colCajas=-1;
+  first.forEach((h,i)=>{
+    if(colPlanta===-1 && /planta|bodega|ciudad/.test(h)) colPlanta=i;
+    if(colRef===-1 && /ref|siesa/.test(h)) colRef=i;
+    if(colCajas===-1 && /caja|cantidad|qty/.test(h)) colCajas=i;
+  });
+  const isHeader = colPlanta!==-1 || colRef!==-1 || colCajas!==-1;
+  return {
+    startRow: isHeader ? 1 : 0,
+    colPlanta: colPlanta!==-1 ? colPlanta : 0,
+    colRef: colRef!==-1 ? colRef : 1,
+    colCajas: colCajas!==-1 ? colCajas : 2
+  };
+}
+
+function handleBulkFile(file, tipo){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let matrix;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      matrix = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+    }catch(err){
+      alert('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) o CSV válido.');
+      return;
+    }
+    const {startRow, colPlanta, colRef, colCajas} = detectBulkColumns(matrix);
+    const parsed = [];
+    for(let r=startRow; r<matrix.length; r++){
+      const row = matrix[r];
+      if(!row || row.length===0) continue;
+      const plantaRaw = row[colPlanta];
+      const refRaw = row[colRef];
+      const cajasRaw = row[colCajas];
+      const planta = normalizePlanta(plantaRaw);
+      const refSiesa = String(refRaw==null?'':refRaw).trim().replace(/^MQ/i,'');
+      const cajas = Number(cajasRaw);
+      if(!refSiesa && !plantaRaw && !cajasRaw) continue; // fila vacía
+      parsed.push({planta, plantaRaw, refSiesa, cajas});
+    }
+    renderBulkPreview(parsed, tipo, file.name);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderBulkPreview(parsed, tipo, filename){
+  const previewId = tipo==='entrada' ? 'bulkEntPreview' : 'bulkSalPreview';
+  if(parsed.length===0){
+    document.getElementById(previewId).innerHTML = `<div class="card" style="margin-top:10px;"><p style="color:var(--warn)">No se encontraron filas válidas en ${filename}.</p></div>`;
+    return;
+  }
+  const rows = parsed.map((r, idx)=>{
+    let estado = '', producto = '—';
+    if(!r.planta){
+      estado = `<span style="color:var(--warn)">⚠ Planta no reconocida: "${r.plantaRaw}"</span>`;
+    } else if(!r.refSiesa || isNaN(r.cajas) || r.cajas<=0){
+      estado = `<span style="color:var(--warn)">⚠ Ref. o cajas inválida</span>`;
+    } else {
+      const p = state.data[r.planta].products.find(x=>x.refSiesa===r.refSiesa);
+      if(!p){
+        estado = `<span style="color:var(--warn)">⚠ Ref. Siesa ${r.refSiesa} no existe en ${WH_NAMES[r.planta]}</span>`;
+      } else {
+        producto = p.producto;
+        estado = `<span style="color:var(--accent-2)">✓ OK</span>`;
+      }
+    }
+    return `<tr>
+      <td>${r.planta ? WH_NAMES[r.planta] : (r.plantaRaw||'—')}</td>
+      <td>${r.refSiesa||'—'}</td>
+      <td>${producto}</td>
+      <td class="num">${isNaN(r.cajas)?'—':r.cajas.toLocaleString('es-CO')}</td>
+      <td>${estado}</td>
+    </tr>`;
+  }).join('');
+
+  const okCount = parsed.filter(r=>{
+    if(!r.planta || !r.refSiesa || isNaN(r.cajas) || r.cajas<=0) return false;
+    return !!state.data[r.planta].products.find(x=>x.refSiesa===r.refSiesa);
+  }).length;
+
+  document.getElementById(previewId).innerHTML = `
+    <div class="card" style="margin-top:10px;">
+      <h2>Vista previa — ${filename}</h2>
+      <p class="helptext">${okCount} de ${parsed.length} filas listas para importar. Las filas con ⚠ no se importarán.</p>
+      <div class="table-wrap" style="max-height:340px;">
+        <table><thead><tr><th>Bodega</th><th>Ref. Siesa</th><th>Producto</th><th class="num">Cajas</th><th>Estado</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn" onclick='confirmBulkImport(${JSON.stringify(parsed)}, "${tipo}", "${filename.replace(/"/g,'')}")'>✓ Confirmar e importar ${okCount} filas</button>
+        <button class="btn secondary" onclick="document.getElementById('${previewId}').innerHTML=''">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+async function confirmBulkImport(parsed, tipo, filename){
+  const isEntrada = tipo==='entrada';
+  const concepto = document.getElementById(isEntrada?'bulkEntConcepto':'bulkSalConcepto').value;
+  const fecha = document.getElementById(isEntrada?'bulkEntFecha':'bulkSalFecha').value || new Date().toISOString().slice(0,10);
+  const ref = document.getElementById(isEntrada?'bulkEntRef':'bulkSalRef').value.trim() || filename;
+
+  const bodegasTocadas = new Set();
+  let count = 0;
+  parsed.forEach(r=>{
+    if(!r.planta || !r.refSiesa || isNaN(r.cajas) || r.cajas<=0) return;
+    const p = state.data[r.planta].products.find(x=>x.refSiesa===r.refSiesa);
+    if(!p) return;
+    const mov = {id:uid(), fecha, concepto, ref, material:p.material, cantidad:r.cajas, origen: isEntrada?'bulk':'bulk_manual'};
+    state.data[r.planta][isEntrada?'entradas':'salidas'].push(mov);
+    bodegasTocadas.add(r.planta);
+    count++;
+  });
+
+  for(const wh of bodegasTocadas){ await saveWarehouseData(wh); }
+
+  const previewId = isEntrada ? 'bulkEntPreview' : 'bulkSalPreview';
+  document.getElementById(previewId).innerHTML = `<div class="card" style="margin-top:10px;"><p style="color:var(--accent-2)">✓ Se registraron ${count} ${isEntrada?'entradas':'salidas'} desde ${filename}.</p></div>`;
+  showToast(`✓ ${count} ${isEntrada?'entradas':'salidas'} importadas`);
+  render();
+}
+
+/* ======================= EXPORT / PRINT ======================= */
+function exportCSV(){
+  const wh = state.warehouse;
+  const d = state.data[wh];
+  const {totalsEnt, totalsSal} = computeTotals(wh);
+  let csv = "Material;Ref Siesa;Producto;Inv Inicial;Entradas;Salidas;Real Inv\n";
+  d.products.forEach(p=>{
+    const ent = totalsEnt[p.material]||0, sal = totalsSal[p.material]||0;
+    const real = Number(p.inicial)+ent-sal;
+    csv += `${p.material};${p.refSiesa};${p.producto};${p.inicial};${ent};${sal};${real}\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `inventario_${wh}_${CURRENT_MONTH}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function printReport(){ window.print(); }
+
+/* ======================= TOAST ======================= */
+let toastTimeout;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(()=> t.classList.remove('show'), 2600);
+}
+
+// init() se llama automáticamente al iniciar sesión (ver onAuthed) o de inmediato si no hay Firebase configurado.
+if(!firebaseReady){ init(); }
+</script>
+</body>
+</html>
