@@ -63,11 +63,17 @@
   }
   .card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-dim); margin:0 0 12px; font-weight:700;}
   .kpis{ display:flex; gap:10px; flex-wrap:wrap;}
-  .kpi{ flex:1; min-width:120px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 14px;}
-  .kpi .v{ font-size:22px; font-weight:700; font-family:var(--font-mono);}
-  .kpi .l{ font-size:11px; color:var(--text-dim); text-transform:uppercase; margin-top:2px;}
-  .kpi.entradas .v{ color:var(--entrada);}
-  .kpi.salidas .v{ color:var(--salida);}
+  .kpi{ flex:1; min-width:130px; border:1px solid var(--border); border-radius:10px; padding:12px 14px; border-left:4px solid var(--border); transition:.15s;}
+  .kpi .v{ font-size:24px; font-weight:800; font-family:var(--font-mono);}
+  .kpi .l{ font-size:11px; color:var(--text-dim); text-transform:uppercase; margin-top:2px; letter-spacing:.4px;}
+  .kpi.inicial{ background:linear-gradient(135deg, #1c2f4a, var(--panel-2)); border-left-color:#4a7dc9;}
+  .kpi.inicial .v{ color:#7ba7e6;}
+  .kpi.entradas{ background:linear-gradient(135deg, #123d2e, var(--panel-2)); border-left-color:var(--entrada);}
+  .kpi.entradas .v{ color:var(--accent-2);}
+  .kpi.salidas{ background:linear-gradient(135deg, #421f1f, var(--panel-2)); border-left-color:var(--salida);}
+  .kpi.salidas .v{ color:#e08484;}
+  .kpi.real{ background:linear-gradient(135deg, #4a3a12, var(--panel-2)); border-left-color:var(--warn); border-left-width:6px;}
+  .kpi.real .v{ color:#f2c46d; font-size:26px;}
   table{ width:100%; border-collapse:collapse; font-size:13px;}
   th{ text-align:left; padding:8px 10px; color:var(--text-dim); font-weight:600; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); font-size:11px; text-transform:uppercase;}
   td{ padding:7px 10px; border-bottom:1px solid #1f2c37;}
@@ -178,10 +184,10 @@
     <div class="card">
       <h2>Resumen del mes — <span id="whName">Cali</span></h2>
       <div class="kpis">
-        <div class="kpi"><div class="v" id="kpiInicial">0</div><div class="l">Inv. Inicial</div></div>
-        <div class="kpi entradas"><div class="v" id="kpiEntradas">0</div><div class="l">Entradas</div></div>
-        <div class="kpi salidas"><div class="v" id="kpiSalidas">0</div><div class="l">Salidas</div></div>
-        <div class="kpi"><div class="v" id="kpiReal">0</div><div class="l">Real Inv.</div></div>
+        <div class="kpi inicial"><div class="v" id="kpiInicial">0</div><div class="l">📦 Inv. Inicial</div></div>
+        <div class="kpi entradas"><div class="v" id="kpiEntradas">0</div><div class="l">⬆ Entradas</div></div>
+        <div class="kpi salidas"><div class="v" id="kpiSalidas">0</div><div class="l">⬇ Salidas</div></div>
+        <div class="kpi real"><div class="v" id="kpiReal">0</div><div class="l">✅ Real Inv.</div></div>
       </div>
     </div>
     <div class="card">
@@ -234,6 +240,7 @@
     <button onclick="switchTab('salidas')" id="tabBtnSalidas">Salidas — archivo plano (POOL)</button>
     <button onclick="switchTab('salidasManual')" id="tabBtnSalidasManual">Salidas manuales (TTS / SDA / TTD)</button>
     <button onclick="switchTab('movimientos')" id="tabBtnMovimientos">Historial de movimientos</button>
+    <button onclick="switchTab('config')" id="tabBtnConfig">⚙ Configuración producto</button>
   </div>
 
   <!-- ENTRADAS MANUALES -->
@@ -255,13 +262,22 @@
         <div class="field"><label>Producto</label>
           <select id="materialSelect"></select>
         </div>
-        <div class="field"><label>Cantidad (cajas)</label><input type="number" id="entCantidad" min="0" style="width:100px;"></div>
+        <div class="field"><label>Cantidad</label><input type="number" id="entCantidad" min="0" step="any" style="width:100px;"></div>
+        <div class="field"><label>Unidad</label>
+          <select id="entUnidad" style="width:100px;">
+            <option value="cajas">Cajas</option>
+            <option value="unidades">Unidades</option>
+          </select>
+        </div>
         <div class="field"><label>&nbsp;</label><button class="btn" onclick="addEntrada()">+ Agregar entrada</button></div>
       </div>
     </div>
 
     <div class="card" style="margin-top:14px;">
-      <h2>Carga masiva desde Excel</h2>
+      <div class="flex-between">
+        <h2 style="margin:0;">Carga masiva desde Excel</h2>
+        <button class="btn secondary small" onclick="downloadBulkTemplate()">📥 Descargar plantilla Excel</button>
+      </div>
       <p class="helptext">Para facturas con muchas referencias. El Excel debe tener 3 columnas: <b>Planta</b> (Cali / Bquilla), <b>Ref. Siesa</b> y <b>Cajas</b>. Puede traer o no fila de encabezado, y puede incluir filas de ambas bodegas en el mismo archivo — cada una se registrará automáticamente en la bodega que le corresponde.</p>
       <div class="row">
         <div class="field"><label>Fecha (se aplica a todas las filas)</label><input type="date" id="bulkEntFecha"></div>
@@ -320,13 +336,22 @@
         <div class="field"><label>Producto</label>
           <select id="materialSelectSal"></select>
         </div>
-        <div class="field"><label>Cantidad (cajas)</label><input type="number" id="salCantidad" min="0" style="width:100px;"></div>
+        <div class="field"><label>Cantidad</label><input type="number" id="salCantidad" min="0" step="any" style="width:100px;"></div>
+        <div class="field"><label>Unidad</label>
+          <select id="salUnidad" style="width:100px;">
+            <option value="cajas">Cajas</option>
+            <option value="unidades">Unidades</option>
+          </select>
+        </div>
         <div class="field"><label>&nbsp;</label><button class="btn" onclick="addSalidaManual()">+ Agregar salida</button></div>
       </div>
     </div>
 
     <div class="card" style="margin-top:14px;">
-      <h2>Carga masiva desde Excel</h2>
+      <div class="flex-between">
+        <h2 style="margin:0;">Carga masiva desde Excel</h2>
+        <button class="btn secondary small" onclick="downloadBulkTemplate()">📥 Descargar plantilla Excel</button>
+      </div>
       <p class="helptext">Para facturaciones con muchas referencias. El Excel debe tener 3 columnas: <b>Planta</b> (Cali / Bquilla), <b>Ref. Siesa</b> y <b>Cajas</b>. Puede traer o no fila de encabezado, y puede incluir filas de ambas bodegas en el mismo archivo.</p>
       <div class="row">
         <div class="field"><label>Fecha (se aplica a todas las filas)</label><input type="date" id="bulkSalFecha"></div>
@@ -361,6 +386,15 @@
     </div>
   </div>
 
+  <!-- CONFIGURACIÓN PRODUCTO -->
+  <div class="tabpage" id="page-config">
+    <div class="card">
+      <h2>Configuración de producto — <span id="whNameConfig">Cali</span></h2>
+      <p class="helptext">Unidades que trae cada caja de cada referencia, usado para convertir cuando registras una entrada o salida en "Unidades" en vez de "Cajas". Se calcula solo a partir del nombre del producto, pero ajústalo si el empaque real es distinto.</p>
+      <div class="table-wrap" id="configTableWrap"></div>
+    </div>
+  </div>
+
 </main>
 
 </div>
@@ -370,6 +404,14 @@
 
 <script>
 /* ======================= MAESTRO DE PRODUCTOS (extraído del archivo original) ======================= */
+// "und" = unidades (barras/piezas) que trae cada caja. Se infiere del primer número de la
+// descripción (ej. "24X250g" -> 24 und/caja). Es editable por producto en la tabla, por si
+// la descripción no refleja el empaque real (ej. referencias "10X3X250" con empaques dobles).
+function inferUnitsPerBox(desc){
+  const m = String(desc||'').match(/(\d+)\s*[xX]/);
+  return m ? Number(m[1]) : 1;
+}
+
 const PRODUCT_MASTER = {
   "2PT07": [
     {material:"7612", refSiesa:"7069", producto:"SERV JA UN PLUS FLORAL 10X3X250 PRE.ESP", inicial:151},
@@ -545,7 +587,7 @@ function prevMonthKey(monthKey){
 
 function freshFromMaster(wh){
   return {
-    products: PRODUCT_MASTER[wh].map(p => ({material:p.material, refSiesa:p.refSiesa, producto:p.producto, inicial:p.inicial})),
+    products: PRODUCT_MASTER[wh].map(p => ({material:p.material, refSiesa:p.refSiesa, producto:p.producto, inicial:p.inicial, und:inferUnitsPerBox(p.producto)})),
     entradas: [],
     salidas: []
   };
@@ -558,7 +600,7 @@ function rollOverFromPrev(wh, prevData){
   (prevData.salidas||[]).forEach(m=>{ totalsSal[m.material]=(totalsSal[m.material]||0)+Number(m.cantidad); });
   return {
     products: prevData.products.map(p=>({
-      material:p.material, refSiesa:p.refSiesa, producto:p.producto,
+      material:p.material, refSiesa:p.refSiesa, producto:p.producto, und: p.und || inferUnitsPerBox(p.producto),
       inicial: Number(p.inicial) + (totalsEnt[p.material]||0) - (totalsSal[p.material]||0)
     })),
     entradas: [], salidas: []
@@ -590,8 +632,9 @@ async function loadWarehouseData(wh){
 // como objetos por id en vez de arrays, y los normalizamos de vuelta a arrays al leer.
 function normalizeLoaded(val){
   const toArray = v => v ? Object.values(v) : [];
+  const products = toArray(val.products).map(p => ({...p, und: p.und || inferUnitsPerBox(p.producto)}));
   return {
-    products: toArray(val.products),
+    products,
     entradas: toArray(val.entradas),
     salidas: toArray(val.salidas)
   };
@@ -716,12 +759,13 @@ function switchWarehouse(wh){
 }
 
 function switchTab(tab){
-  const tabs = ['entradas','salidas','salidasManual','movimientos'];
+  const tabs = ['entradas','salidas','salidasManual','movimientos','config'];
   tabs.forEach(t=>{
     document.getElementById('page-'+t).classList.toggle('active', t===tab);
     document.getElementById('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active', t===tab);
   });
   if(tab==='movimientos') renderHistorial();
+  if(tab==='config') renderConfig();
 }
 
 /* ======================= CALCULOS ======================= */
@@ -753,23 +797,24 @@ function render(){
       <td>${p.material}</td>
       <td>${p.refSiesa}</td>
       <td>${p.producto}</td>
-      <td class="num"><input class="editable-initial" type="number" value="${p.inicial}" onchange="updateInicial('${p.material}', this.value)"></td>
-      <td class="num" style="color:var(--entrada)">${ent.toLocaleString('es-CO')}</td>
-      <td class="num" style="color:var(--salida)">${sal.toLocaleString('es-CO')}</td>
-      <td class="num" style="font-weight:700">${real.toLocaleString('es-CO')}</td>
+      <td class="num"><input class="editable-initial" type="number" step="any" value="${p.inicial}" onchange="updateInicial('${p.material}', this.value)"></td>
+      <td class="num" style="color:var(--entrada)">${fmtCajas(ent)}</td>
+      <td class="num" style="color:var(--salida)">${fmtCajas(sal)}</td>
+      <td class="num" style="font-weight:700">${fmtCajas(real)}</td>
       <td><button class="btn danger" onclick="deleteProduct('${p.material}')" title="Eliminar producto">✕</button></td>
     </tr>`;
   }).join('');
   document.getElementById('invTableBody').innerHTML = rows || `<tr><td colspan="8" class="empty">Sin productos</td></tr>`;
 
-  document.getElementById('kpiInicial').textContent = sumInicial.toLocaleString('es-CO');
-  document.getElementById('kpiEntradas').textContent = sumEnt.toLocaleString('es-CO');
-  document.getElementById('kpiSalidas').textContent = sumSal.toLocaleString('es-CO');
-  document.getElementById('kpiReal').textContent = sumReal.toLocaleString('es-CO');
+  document.getElementById('kpiInicial').textContent = fmtCajas(sumInicial);
+  document.getElementById('kpiEntradas').textContent = fmtCajas(sumEnt);
+  document.getElementById('kpiSalidas').textContent = fmtCajas(sumSal);
+  document.getElementById('kpiReal').textContent = fmtCajas(sumReal);
 
   renderEntradasList();
   renderSalidasManualList();
   if(document.getElementById('page-movimientos').classList.contains('active')) renderHistorial();
+  if(document.getElementById('page-config').classList.contains('active')) renderConfig();
 }
 
 function productName(wh, material){
@@ -792,7 +837,7 @@ function renderEntradasList(){
         <td><span class="tag entrada">${m.concepto}</span></td>
         <td>${m.ref||'—'}</td>
         <td>${productName(wh, m.material)}</td>
-        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('entradas','${m.id}')">Eliminar</button></td>
       </tr>`).join('')}
     </tbody></table>`;
@@ -813,7 +858,7 @@ function renderSalidasManualList(){
         <td><span class="tag salida">${m.concepto}</span></td>
         <td>${m.ref||'—'}</td>
         <td>${productName(wh, m.material)}</td>
-        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('salidas','${m.id}')">Eliminar</button></td>
       </tr>`).join('')}
     </tbody></table>`;
@@ -839,8 +884,24 @@ function renderHistorial(){
         <td>${m.concepto}</td>
         <td>${m.ref||'—'}</td>
         <td>${productName(wh, m.material)}</td>
-        <td class="num">${Number(m.cantidad).toLocaleString('es-CO')}</td>
+        <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('${m.tipo==='entrada'?'entradas':'salidas'}','${m.id}')">Eliminar</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderConfig(){
+  const wh = state.warehouse;
+  document.getElementById('whNameConfig').textContent = WH_NAMES[wh];
+  const products = state.data[wh].products.slice().sort((a,b)=> a.refSiesa.localeCompare(b.refSiesa, undefined, {numeric:true}));
+  document.getElementById('configTableWrap').innerHTML = `
+    <table><thead><tr><th>Material</th><th>Ref. Siesa</th><th>Producto</th><th class="num">Und/Caja</th></tr></thead>
+    <tbody>${products.map(p=>`
+      <tr>
+        <td>${p.material}</td>
+        <td>${p.refSiesa}</td>
+        <td>${p.producto}</td>
+        <td class="num"><input class="editable-initial" type="number" step="any" min="1" value="${p.und||1}" onchange="updateUnd('${p.material}', this.value)" style="width:70px;"></td>
       </tr>`).join('')}
     </tbody></table>`;
 }
@@ -848,10 +909,30 @@ function renderHistorial(){
 /* ======================= ACCIONES ======================= */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+function fmtCajas(n){
+  n = Number(n)||0;
+  return Number.isInteger(n) ? n.toLocaleString('es-CO') : n.toLocaleString('es-CO',{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function movLabel(m){
+  // Si el movimiento se cargó en unidades, mostramos también el detalle original entre paréntesis.
+  if(m.unidadIngreso === 'unidades' && m.cantidadOriginal){
+    return `${fmtCajas(m.cantidad)} <span style="color:var(--text-dim); font-size:11px;">(${m.cantidadOriginal} und)</span>`;
+  }
+  return fmtCajas(m.cantidad);
+}
+
 async function updateInicial(material, value){
   const wh = state.warehouse;
   const p = state.data[wh].products.find(x=>x.material===material);
   if(p){ p.inicial = Number(value)||0; await saveWarehouseData(wh); render(); }
+}
+
+async function updateUnd(material, value){
+  const wh = state.warehouse;
+  const p = state.data[wh].products.find(x=>x.material===material);
+  const v = Number(value);
+  if(p && v>0){ p.und = v; await saveWarehouseData(wh); render(); }
 }
 
 async function addProduct(){
@@ -869,7 +950,7 @@ async function addProduct(){
     showToast('⚠ Ya existe un producto con ese código Material en esta bodega.');
     return;
   }
-  state.data[wh].products.push({material, refSiesa, producto, inicial});
+  state.data[wh].products.push({material, refSiesa, producto, inicial, und:inferUnitsPerBox(producto)});
   await saveWarehouseData(wh);
   populateMaterialSelects();
   document.getElementById('newMaterial').value='';
@@ -900,9 +981,15 @@ async function addEntrada(){
   const concepto = document.getElementById('entConcepto').value;
   const ref = document.getElementById('entRef').value.trim();
   const material = document.getElementById('materialSelect').value;
-  const cantidad = Number(document.getElementById('entCantidad').value);
-  if(!fecha || !cantidad || cantidad<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
-  state.data[wh].entradas.push({id:uid(), fecha, concepto, ref, material, cantidad});
+  const cantidadIngresada = Number(document.getElementById('entCantidad').value);
+  const unidadIngreso = document.getElementById('entUnidad').value;
+  if(!fecha || !cantidadIngresada || cantidadIngresada<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
+  const p = state.data[wh].products.find(x=>x.material===material);
+  const und = (p && p.und) || 1;
+  const cantidad = unidadIngreso==='unidades' ? cantidadIngresada / und : cantidadIngresada;
+  const mov = {id:uid(), fecha, concepto, ref, material, cantidad, unidadIngreso};
+  if(unidadIngreso==='unidades') mov.cantidadOriginal = cantidadIngresada;
+  state.data[wh].entradas.push(mov);
   await saveWarehouseData(wh);
   document.getElementById('entCantidad').value='';
   document.getElementById('entRef').value='';
@@ -916,9 +1003,15 @@ async function addSalidaManual(){
   const concepto = document.getElementById('salConcepto').value;
   const ref = document.getElementById('salRef').value.trim();
   const material = document.getElementById('materialSelectSal').value;
-  const cantidad = Number(document.getElementById('salCantidad').value);
-  if(!fecha || !cantidad || cantidad<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
-  state.data[wh].salidas.push({id:uid(), fecha, concepto, ref, material, cantidad, origen:'manual'});
+  const cantidadIngresada = Number(document.getElementById('salCantidad').value);
+  const unidadIngreso = document.getElementById('salUnidad').value;
+  if(!fecha || !cantidadIngresada || cantidadIngresada<=0){ showToast('⚠ Completa fecha y una cantidad válida.'); return; }
+  const p = state.data[wh].products.find(x=>x.material===material);
+  const und = (p && p.und) || 1;
+  const cantidad = unidadIngreso==='unidades' ? cantidadIngresada / und : cantidadIngresada;
+  const mov = {id:uid(), fecha, concepto, ref, material, cantidad, origen:'manual', unidadIngreso};
+  if(unidadIngreso==='unidades') mov.cantidadOriginal = cantidadIngresada;
+  state.data[wh].salidas.push(mov);
   await saveWarehouseData(wh);
   document.getElementById('salCantidad').value='';
   document.getElementById('salRef').value='';
@@ -1177,6 +1270,31 @@ async function confirmBulkImport(parsed, tipo, filename){
 }
 
 /* ======================= EXPORT / PRINT ======================= */
+function downloadBulkTemplate(){
+  const wsData = [
+    ["Planta", "Ref. Siesa", "Cajas"],
+    ["Cali", "7027", 50],
+    ["Bquilla", "7710", 120]
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(wsData);
+  ws1['!cols'] = [{wch:14},{wch:12},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws1, "Plantilla carga");
+
+  const refRows = [["Bodega", "Ref. Siesa", "Producto"]];
+  ['2PT07','4PT04'].forEach(wh=>{
+    state.data[wh].products.forEach(p=>{
+      refRows.push([WH_NAMES[wh], p.refSiesa, p.producto]);
+    });
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(refRows);
+  ws2['!cols'] = [{wch:18},{wch:12},{wch:45}];
+  XLSX.utils.book_append_sheet(wb, ws2, "Referencias válidas");
+
+  XLSX.writeFile(wb, `plantilla_carga_masiva_${CURRENT_MONTH}.xlsx`);
+  showToast('✓ Plantilla descargada');
+}
+
 function exportCSV(){
   const wh = state.warehouse;
   const d = state.data[wh];
