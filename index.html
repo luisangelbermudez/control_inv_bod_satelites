@@ -129,6 +129,8 @@
   ::-webkit-scrollbar{ width:10px; height:10px;}
   ::-webkit-scrollbar-thumb{ background:#2a3947; border-radius:6px;}
   .flex-between{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;}
+  tr.filter-row th{ padding:5px 8px; background:var(--panel); position:sticky; top:31px;}
+  tr.filter-row input, tr.filter-row select{ width:100%; padding:5px 7px; font-size:12px;}
 
   /* ---- Pantalla de acceso ---- */
   #loginScreen{
@@ -822,6 +824,11 @@ function productName(wh, material){
   return p ? p.producto : material;
 }
 
+function refSiesaOf(wh, material){
+  const p = state.data[wh].products.find(x=>x.material===material);
+  return p ? p.refSiesa : '—';
+}
+
 function renderEntradasList(){
   const wh = state.warehouse;
   const list = state.data[wh].entradas.slice().sort((a,b)=> b.fecha.localeCompare(a.fecha));
@@ -830,11 +837,12 @@ function renderEntradasList(){
     return;
   }
   document.getElementById('entradasListWrap').innerHTML = `
-    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
     <tbody>${list.map(m=>`
       <tr>
         <td>${m.fecha}</td>
         <td><span class="tag entrada">${m.concepto}</span></td>
+        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${m.ref||'—'}</td>
         <td>${productName(wh, m.material)}</td>
         <td class="num">${movLabel(m)}</td>
@@ -851,11 +859,12 @@ function renderSalidasManualList(){
     return;
   }
   document.getElementById('salidasManualListWrap').innerHTML = `
-    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
     <tbody>${list.map(m=>`
       <tr>
         <td>${m.fecha}</td>
         <td><span class="tag salida">${m.concepto}</span></td>
+        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${m.ref||'—'}</td>
         <td>${productName(wh, m.material)}</td>
         <td class="num">${movLabel(m)}</td>
@@ -876,18 +885,75 @@ function renderHistorial(){
     return;
   }
   document.getElementById('historialWrap').innerHTML = `
-    <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Referencia</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
-    <tbody>${all.map(m=>`
-      <tr>
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th>
+        </tr>
+        <tr class="filter-row">
+          <th><input type="text" id="filtFecha" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th>
+            <select id="filtTipo" onchange="filterHistorial()">
+              <option value="">Todos</option>
+              <option value="entrada">Entrada</option>
+              <option value="salida">Salida</option>
+            </select>
+          </th>
+          <th><input type="text" id="filtConcepto" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th><input type="text" id="filtRefSiesa" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th><input type="text" id="filtDoc" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th><input type="text" id="filtProducto" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th></th>
+          <th><button class="btn secondary small" onclick="clearHistorialFilters()">Limpiar</button></th>
+        </tr>
+      </thead>
+      <tbody>${all.map(m=>{
+        const ref = refSiesaOf(wh, m.material);
+        const prod = productName(wh, m.material);
+        return `
+      <tr data-row
+          data-fecha="${m.fecha.toLowerCase()}"
+          data-tipo="${m.tipo}"
+          data-concepto="${String(m.concepto).toLowerCase()}"
+          data-refsiesa="${String(ref).toLowerCase()}"
+          data-doc="${String(m.ref||'').toLowerCase()}"
+          data-producto="${String(prod).toLowerCase()}">
         <td>${m.fecha}</td>
         <td><span class="tag ${m.tipo}">${m.tipo}</span></td>
         <td>${m.concepto}</td>
+        <td>${ref}</td>
         <td>${m.ref||'—'}</td>
-        <td>${productName(wh, m.material)}</td>
+        <td>${prod}</td>
         <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('${m.tipo==='entrada'?'entradas':'salidas'}','${m.id}')">Eliminar</button></td>
-      </tr>`).join('')}
-    </tbody></table>`;
+      </tr>`;}).join('')}
+      </tbody>
+    </table>`;
+}
+
+function filterHistorial(){
+  const fFecha = (document.getElementById('filtFecha').value||'').toLowerCase();
+  const fTipo = document.getElementById('filtTipo').value;
+  const fConcepto = (document.getElementById('filtConcepto').value||'').toLowerCase();
+  const fRef = (document.getElementById('filtRefSiesa').value||'').toLowerCase();
+  const fDoc = (document.getElementById('filtDoc').value||'').toLowerCase();
+  const fProd = (document.getElementById('filtProducto').value||'').toLowerCase();
+  document.querySelectorAll('#historialWrap tbody tr[data-row]').forEach(tr=>{
+    const match =
+      tr.dataset.fecha.includes(fFecha) &&
+      (fTipo==='' || tr.dataset.tipo===fTipo) &&
+      tr.dataset.concepto.includes(fConcepto) &&
+      tr.dataset.refsiesa.includes(fRef) &&
+      tr.dataset.doc.includes(fDoc) &&
+      tr.dataset.producto.includes(fProd);
+    tr.style.display = match ? '' : 'none';
+  });
+}
+
+function clearHistorialFilters(){
+  ['filtFecha','filtConcepto','filtRefSiesa','filtDoc','filtProducto'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('filtTipo').value='';
+  filterHistorial();
 }
 
 function renderConfig(){
