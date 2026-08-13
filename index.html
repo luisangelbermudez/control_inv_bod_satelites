@@ -243,6 +243,7 @@
     <button onclick="switchTab('salidasManual')" id="tabBtnSalidasManual">Salidas manuales (TTS / SDA / TTD)</button>
     <button onclick="switchTab('movimientos')" id="tabBtnMovimientos">Historial de movimientos</button>
     <button onclick="switchTab('config')" id="tabBtnConfig">⚙ Configuración producto</button>
+    <button onclick="switchTab('conciliacion')" id="tabBtnConciliacion">🔍 Conciliación</button>
   </div>
 
   <!-- ENTRADAS MANUALES -->
@@ -394,6 +395,35 @@
       <h2>Configuración de producto — <span id="whNameConfig">Cali</span></h2>
       <p class="helptext">Unidades que trae cada caja de cada referencia, usado para convertir cuando registras una entrada o salida en "Unidades" en vez de "Cajas". Se calcula solo a partir del nombre del producto, pero ajústalo si el empaque real es distinto.</p>
       <div class="table-wrap" id="configTableWrap"></div>
+    </div>
+  </div>
+
+  <!-- CONCILIACIÓN -->
+  <div class="tabpage" id="page-conciliacion">
+    <div class="card">
+      <h2>Conciliación de inventario — <span id="whNameConciliacion">Cali</span></h2>
+      <p class="helptext">Fórmula: <b>Inv. real SIESA − Pendiente por despacho = Inv. Real calculado</b>, comparado contra el Real Inv. que ya calcula la app. Esto es una comparación en vivo — no queda guardada, cada vez que entres sube los 2 archivos frescos. Solo aplica a la bodega activa (<span id="whNameConciliacion2">Cali</span>).</p>
+
+      <div class="grid">
+        <div class="card" style="background:var(--panel-2);">
+          <h2>1. Reporte SIESA (g07.xls)</h2>
+          <div class="dropzone" id="dropzoneSiesa" onclick="document.getElementById('siesaFileInput').click()">
+            📊 Haz clic o arrastra aquí el Excel de SIESA
+            <input type="file" id="siesaFileInput" accept=".xlsx,.xls,.csv" onchange="handleSiesaFile(this.files[0])">
+          </div>
+          <div id="siesaFileStatus" class="concept-note"></div>
+        </div>
+        <div class="card" style="background:var(--panel-2);">
+          <h2>2. Pendiente por despacho</h2>
+          <div class="dropzone" id="dropzonePendiente" onclick="document.getElementById('pendienteFileInput').click()">
+            📊 Haz clic o arrastra aquí el Excel de pendientes (Planta · Ref. Siesa · Cajas)
+            <input type="file" id="pendienteFileInput" accept=".xlsx,.xls,.csv" onchange="handlePendienteFile(this.files[0])">
+          </div>
+          <div id="pendienteFileStatus" class="concept-note"></div>
+        </div>
+      </div>
+
+      <div id="conciliacionResultado"></div>
     </div>
   </div>
 
@@ -757,17 +787,22 @@ function switchWarehouse(wh){
   document.getElementById('newProductWhLabel').textContent = WH_NAMES[wh];
   applyWarehouseTheme(wh);
   populateMaterialSelects();
+  resetConciliacion();
   render();
 }
 
 function switchTab(tab){
-  const tabs = ['entradas','salidas','salidasManual','movimientos','config'];
+  const tabs = ['entradas','salidas','salidasManual','movimientos','config','conciliacion'];
   tabs.forEach(t=>{
     document.getElementById('page-'+t).classList.toggle('active', t===tab);
     document.getElementById('tabBtn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active', t===tab);
   });
   if(tab==='movimientos') renderHistorial();
   if(tab==='config') renderConfig();
+  if(tab==='conciliacion'){
+    document.getElementById('whNameConciliacion').textContent = WH_NAMES[state.warehouse];
+    document.getElementById('whNameConciliacion2').textContent = WH_NAMES[state.warehouse];
+  }
 }
 
 /* ======================= CALCULOS ======================= */
@@ -837,13 +872,13 @@ function renderEntradasList(){
     return;
   }
   document.getElementById('entradasListWrap').innerHTML = `
-    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Documento</th><th>Ref. Siesa</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
     <tbody>${list.map(m=>`
       <tr>
         <td>${m.fecha}</td>
         <td><span class="tag entrada">${m.concepto}</span></td>
-        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${m.ref||'—'}</td>
+        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${productName(wh, m.material)}</td>
         <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('entradas','${m.id}')">Eliminar</button></td>
@@ -859,13 +894,13 @@ function renderSalidasManualList(){
     return;
   }
   document.getElementById('salidasManualListWrap').innerHTML = `
-    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
+    <table><thead><tr><th>Fecha</th><th>Concepto</th><th>Documento</th><th>Ref. Siesa</th><th>Producto</th><th class="num">Cajas</th><th></th></tr></thead>
     <tbody>${list.map(m=>`
       <tr>
         <td>${m.fecha}</td>
         <td><span class="tag salida">${m.concepto}</span></td>
-        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${m.ref||'—'}</td>
+        <td>${refSiesaOf(wh, m.material)}</td>
         <td>${productName(wh, m.material)}</td>
         <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('salidas','${m.id}')">Eliminar</button></td>
@@ -888,7 +923,7 @@ function renderHistorial(){
     <table>
       <thead>
         <tr>
-          <th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Ref. Siesa</th><th>Documento</th><th>Producto</th><th class="num">Cajas</th><th></th>
+          <th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Documento</th><th>Ref. Siesa</th><th>Producto</th><th class="num">Cajas</th><th></th>
         </tr>
         <tr class="filter-row">
           <th><input type="text" id="filtFecha" placeholder="Filtrar..." oninput="filterHistorial()"></th>
@@ -900,8 +935,8 @@ function renderHistorial(){
             </select>
           </th>
           <th><input type="text" id="filtConcepto" placeholder="Filtrar..." oninput="filterHistorial()"></th>
-          <th><input type="text" id="filtRefSiesa" placeholder="Filtrar..." oninput="filterHistorial()"></th>
           <th><input type="text" id="filtDoc" placeholder="Filtrar..." oninput="filterHistorial()"></th>
+          <th><input type="text" id="filtRefSiesa" placeholder="Filtrar..." oninput="filterHistorial()"></th>
           <th><input type="text" id="filtProducto" placeholder="Filtrar..." oninput="filterHistorial()"></th>
           <th></th>
           <th><button class="btn secondary small" onclick="clearHistorialFilters()">Limpiar</button></th>
@@ -921,8 +956,8 @@ function renderHistorial(){
         <td>${m.fecha}</td>
         <td><span class="tag ${m.tipo}">${m.tipo}</span></td>
         <td>${m.concepto}</td>
-        <td>${ref}</td>
         <td>${m.ref||'—'}</td>
+        <td>${ref}</td>
         <td>${prod}</td>
         <td class="num">${movLabel(m)}</td>
         <td><button class="btn danger" onclick="deleteMovimiento('${m.tipo==='entrada'?'entradas':'salidas'}','${m.id}')">Eliminar</button></td>
@@ -1333,6 +1368,188 @@ async function confirmBulkImport(parsed, tipo, filename){
   document.getElementById(previewId).innerHTML = `<div class="card" style="margin-top:10px;"><p style="color:var(--accent-2)">✓ Se registraron ${count} ${isEntrada?'entradas':'salidas'} desde ${filename}.</p></div>`;
   showToast(`✓ ${count} ${isEntrada?'entradas':'salidas'} importadas`);
   render();
+}
+
+/* ======================= CONCILIACIÓN DE INVENTARIO ======================= */
+let conciliacion = { wh:null, siesaMap:null, siesaFile:null, pendMap:null, pendFile:null };
+
+function resetConciliacion(){
+  conciliacion = { wh:null, siesaMap:null, siesaFile:null, pendMap:null, pendFile:null };
+  const s = document.getElementById('siesaFileStatus'); if(s) s.textContent = '';
+  const p = document.getElementById('pendienteFileStatus'); if(p) p.textContent = '';
+  const r = document.getElementById('conciliacionResultado'); if(r) r.innerHTML = '';
+}
+
+function stripMQ(v){ return String(v==null?'':v).trim().replace(/^MQ/i,''); }
+
+function detectSiesaColumns(matrix){
+  if(matrix.length===0) return {startRow:0, colRef:0, colBodega:2, colExistencia:9};
+  const first = matrix[0].map(v=>String(v||'').toLowerCase());
+  let colRef=-1, colBodega=-1, colExistencia=-1;
+  first.forEach((h,i)=>{
+    if(colRef===-1 && /referencia/.test(h)) colRef=i;
+    if(colBodega===-1 && /bodega/.test(h)) colBodega=i;
+    if(colExistencia===-1 && /existencia/.test(h)) colExistencia=i;
+  });
+  const isHeader = colRef!==-1 || colBodega!==-1 || colExistencia!==-1;
+  return {
+    startRow: isHeader ? 1 : 0,
+    colRef: colRef!==-1 ? colRef : 0,
+    colBodega: colBodega!==-1 ? colBodega : 2,
+    colExistencia: colExistencia!==-1 ? colExistencia : 9
+  };
+}
+
+function handleSiesaFile(file){
+  if(!file) return;
+  const wh = state.warehouse;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let matrix;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      matrix = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+    }catch(err){
+      alert('No se pudo leer el archivo de SIESA. Verifica que sea el reporte g07 (.xls/.xlsx).');
+      return;
+    }
+    const {startRow, colRef, colBodega, colExistencia} = detectSiesaColumns(matrix);
+    const map = {};
+    let filas=0;
+    for(let r=startRow; r<matrix.length; r++){
+      const row = matrix[r];
+      if(!row || row.length===0) continue;
+      const bodega = normalizePlanta(row[colBodega]);
+      if(bodega !== wh) continue; // solo la bodega activa
+      const ref = stripMQ(row[colRef]);
+      const existencia = Number(row[colExistencia]);
+      if(!ref || isNaN(existencia)) continue;
+      map[ref] = (map[ref]||0) + existencia;
+      filas++;
+    }
+    conciliacion.wh = wh;
+    conciliacion.siesaMap = map;
+    conciliacion.siesaFile = file.name;
+    document.getElementById('siesaFileStatus').innerHTML = `✓ ${file.name} — ${filas} referencias de ${WH_NAMES[wh]} leídas.`;
+    renderConciliacionResultado();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handlePendienteFile(file){
+  if(!file) return;
+  const wh = state.warehouse;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let matrix;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      matrix = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:''});
+    }catch(err){
+      alert('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) o CSV válido.');
+      return;
+    }
+    const {startRow, colPlanta, colRef, colCajas} = detectBulkColumns(matrix);
+    const map = {};
+    let filas=0;
+    for(let r=startRow; r<matrix.length; r++){
+      const row = matrix[r];
+      if(!row || row.length===0) continue;
+      const planta = normalizePlanta(row[colPlanta]);
+      if(planta !== wh) continue; // solo la bodega activa
+      const ref = stripMQ(row[colRef]);
+      const cajas = Number(row[colCajas]);
+      if(!ref || isNaN(cajas)) continue;
+      map[ref] = (map[ref]||0) + cajas;
+      filas++;
+    }
+    conciliacion.wh = wh;
+    conciliacion.pendMap = map;
+    conciliacion.pendFile = file.name;
+    document.getElementById('pendienteFileStatus').innerHTML = `✓ ${file.name} — ${filas} referencias de ${WH_NAMES[wh]} leídas.`;
+    renderConciliacionResultado();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderConciliacionResultado(){
+  const wh = state.warehouse;
+  const box = document.getElementById('conciliacionResultado');
+  if(conciliacion.wh !== wh || !conciliacion.siesaMap || !conciliacion.pendMap){
+    box.innerHTML = '';
+    return;
+  }
+  const {totalsEnt, totalsSal} = computeTotals(wh);
+  const products = state.data[wh].products;
+  const refsVistos = new Set();
+  let filas = [];
+
+  products.forEach(p=>{
+    refsVistos.add(p.refSiesa);
+    const siesa = conciliacion.siesaMap[p.refSiesa] || 0;
+    const pend = conciliacion.pendMap[p.refSiesa] || 0;
+    const calc = siesa - pend;
+    const appReal = Number(p.inicial) + (totalsEnt[p.material]||0) - (totalsSal[p.material]||0);
+    const diff = Math.round((calc - appReal)*100)/100;
+    const ok = Math.abs(diff) < 0.01;
+    filas.push({refSiesa:p.refSiesa, producto:p.producto, siesa, pend, calc, appReal, diff, ok, conocido:true});
+  });
+
+  // referencias que aparecen en los archivos pero no están en el maestro de esta bodega
+  Object.keys(conciliacion.siesaMap).concat(Object.keys(conciliacion.pendMap)).forEach(ref=>{
+    if(refsVistos.has(ref)) return;
+    refsVistos.add(ref);
+    const siesa = conciliacion.siesaMap[ref] || 0;
+    const pend = conciliacion.pendMap[ref] || 0;
+    filas.push({refSiesa:ref, producto:'(no está en el maestro de esta bodega)', siesa, pend, calc:siesa-pend, appReal:null, diff:null, ok:null, conocido:false});
+  });
+
+  filas.sort((a,b)=> a.refSiesa.localeCompare(b.refSiesa, undefined, {numeric:true}));
+
+  const okCount = filas.filter(f=>f.ok===true).length;
+  const revisarCount = filas.filter(f=>f.ok===false).length;
+  const sinDatoCount = filas.filter(f=>f.ok===null).length;
+
+  const rows = filas.map(f=>{
+    let estadoHtml, rowStyle;
+    if(f.ok===true){ estadoHtml = `<span style="color:var(--accent-2); font-weight:700;">✅ OK</span>`; rowStyle=''; }
+    else if(f.ok===false){ estadoHtml = `<span style="color:#e08484; font-weight:700;">⚠ REVISAR (${f.diff>0?'+':''}${fmtCajas(f.diff)})</span>`; rowStyle='background:rgba(194,92,92,0.12);'; }
+    else { estadoHtml = `<span style="color:var(--warn);">⚠ Ref. fuera del maestro</span>`; rowStyle='background:rgba(217,150,63,0.08);'; }
+    return `<tr style="${rowStyle}">
+      <td>${f.refSiesa}</td>
+      <td>${f.producto}</td>
+      <td class="num">${fmtCajas(f.siesa)}</td>
+      <td class="num">${fmtCajas(f.pend)}</td>
+      <td class="num" style="font-weight:600">${fmtCajas(f.calc)}</td>
+      <td class="num">${f.appReal===null ? '—' : fmtCajas(f.appReal)}</td>
+      <td>${estadoHtml}</td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="card" style="margin-top:14px;">
+      <div class="flex-between">
+        <h2 style="margin:0;">Resultado de la conciliación</h2>
+        <span class="helptext" style="margin:0;">✅ ${okCount} OK &nbsp;·&nbsp; ⚠ ${revisarCount} para revisar ${sinDatoCount?`&nbsp;·&nbsp; ${sinDatoCount} fuera del maestro`:''}</span>
+      </div>
+      <div class="table-wrap" style="max-height:520px;">
+        <table>
+          <thead><tr>
+            <th>Ref. Siesa</th><th>Producto</th>
+            <th class="num">Inv. SIESA</th><th class="num">Pendiente despacho</th>
+            <th class="num">Inv. Real calculado</th><th class="num">Real Inv. (app)</th><th>Estado</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn secondary" onclick="resetConciliacion()">🔄 Limpiar y volver a cargar</button>
+      </div>
+    </div>`;
 }
 
 /* ======================= EXPORT / PRINT ======================= */
