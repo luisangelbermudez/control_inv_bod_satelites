@@ -1138,6 +1138,10 @@ async function addSalidaManual(){
 
 async function deleteMovimiento(tipo, id){
   const wh = state.warehouse;
+  const mov = state.data[wh][tipo].find(m=>m.id===id);
+  if(!mov) return;
+  const detalle = `${tipo==='entradas'?'Entrada':'Salida'} · ${mov.fecha} · ${mov.concepto} · ${productName(wh, mov.material)} · ${fmtCajas(mov.cantidad)} cajas`;
+  if(!confirm(`¿Seguro que quieres eliminar este movimiento?\n\n${detalle}\n\nEsta acción no se puede deshacer.`)) return;
   state.data[wh][tipo] = state.data[wh][tipo].filter(m=>m.id!==id);
   await saveWarehouseData(wh);
   showToast('Movimiento eliminado');
