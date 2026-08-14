@@ -952,7 +952,8 @@ function renderHistorial(){
           data-concepto="${String(m.concepto).toLowerCase()}"
           data-refsiesa="${String(ref).toLowerCase()}"
           data-doc="${String(m.ref||'').toLowerCase()}"
-          data-producto="${String(prod).toLowerCase()}">
+          data-producto="${String(prod).toLowerCase()}"
+          data-cajas="${m.cantidad}">
         <td>${m.fecha}</td>
         <td><span class="tag ${m.tipo}">${m.tipo}</span></td>
         <td>${m.concepto}</td>
@@ -963,7 +964,9 @@ function renderHistorial(){
         <td><button class="btn danger" onclick="deleteMovimiento('${m.tipo==='entrada'?'entradas':'salidas'}','${m.id}')">Eliminar</button></td>
       </tr>`;}).join('')}
       </tbody>
-    </table>`;
+    </table>
+    <div class="summary-bar" id="historialTotales" style="margin-top:10px;"></div>`;
+  filterHistorial();
 }
 
 function filterHistorial(){
@@ -973,6 +976,7 @@ function filterHistorial(){
   const fRef = (document.getElementById('filtRefSiesa').value||'').toLowerCase();
   const fDoc = (document.getElementById('filtDoc').value||'').toLowerCase();
   const fProd = (document.getElementById('filtProducto').value||'').toLowerCase();
+  let totEnt=0, totSal=0, visibles=0;
   document.querySelectorAll('#historialWrap tbody tr[data-row]').forEach(tr=>{
     const match =
       tr.dataset.fecha.includes(fFecha) &&
@@ -982,7 +986,19 @@ function filterHistorial(){
       tr.dataset.doc.includes(fDoc) &&
       tr.dataset.producto.includes(fProd);
     tr.style.display = match ? '' : 'none';
+    if(match){
+      visibles++;
+      const cant = Number(tr.dataset.cajas)||0;
+      if(tr.dataset.tipo==='entrada') totEnt += cant; else totSal += cant;
+    }
   });
+  const totalesBox = document.getElementById('historialTotales');
+  if(totalesBox){
+    totalesBox.innerHTML = `<span>📋 ${visibles} movimiento${visibles===1?'':'s'} visible${visibles===1?'':'s'}</span>
+      <span style="color:var(--entrada)">⬆ Total entradas: <b>${fmtCajas(totEnt)}</b></span>
+      <span style="color:var(--salida)">⬇ Total salidas: <b>${fmtCajas(totSal)}</b></span>
+      <span>Neto: <b>${fmtCajas(totEnt-totSal)}</b></span>`;
+  }
 }
 
 function clearHistorialFilters(){
@@ -1530,6 +1546,23 @@ function renderConciliacionResultado(){
     </tr>`;
   }).join('');
 
+  // Totales — suma sobre todas las filas (incluye las "fuera del maestro" en SIESA/Pendiente/Calculado;
+  // Real Inv. app y Diferencia solo suman las filas que sí existen en el maestro, para no distorsionar).
+  const totSiesa = filas.reduce((a,f)=>a+f.siesa, 0);
+  const totPend = filas.reduce((a,f)=>a+f.pend, 0);
+  const totCalc = filas.reduce((a,f)=>a+f.calc, 0);
+  const totApp = filas.filter(f=>f.conocido).reduce((a,f)=>a+f.appReal, 0);
+  const totDiff = Math.round((filas.filter(f=>f.conocido).reduce((a,f)=>a+f.diff, 0))*100)/100;
+
+  const totalRow = `<tr style="background:var(--panel-2); font-weight:700; border-top:2px solid var(--border);">
+      <td colspan="2">TOTAL</td>
+      <td class="num">${fmtCajas(totSiesa)}</td>
+      <td class="num">${fmtCajas(totPend)}</td>
+      <td class="num">${fmtCajas(totCalc)}</td>
+      <td class="num">${fmtCajas(totApp)}</td>
+      <td class="num" style="color:${Math.abs(totDiff)<0.01?'var(--accent-2)':'#e08484'};">${totDiff>0?'+':''}${fmtCajas(totDiff)}</td>
+    </tr>`;
+
   box.innerHTML = `
     <div class="card" style="margin-top:14px;">
       <div class="flex-between">
@@ -1544,6 +1577,7 @@ function renderConciliacionResultado(){
             <th class="num">Inv. Real calculado</th><th class="num">Real Inv. (app)</th><th>Estado</th>
           </tr></thead>
           <tbody>${rows}</tbody>
+          <tfoot>${totalRow}</tfoot>
         </table>
       </div>
       <div class="row" style="margin-top:12px;">
@@ -1613,3 +1647,4 @@ if(!firebaseReady){ init(); }
 </script>
 </body>
 </html>
+
