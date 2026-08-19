@@ -830,14 +830,15 @@ function render(){
     const sal = totalsSal[p.material]||0;
     const real = Number(p.inicial) + ent - sal;
     sumInicial += Number(p.inicial); sumEnt += ent; sumSal += sal; sumReal += real;
-    return `<tr>
+    const esNegativo = real < 0;
+    return `<tr${esNegativo ? ' style="background:rgba(194,92,92,0.18);" title="Real Inv. negativo — hay una diferencia que revisar"' : ''}>
       <td>${p.material}</td>
       <td>${p.refSiesa}</td>
       <td>${p.producto}</td>
       <td class="num"><input class="editable-initial" type="number" step="any" value="${p.inicial}" onchange="updateInicial('${p.material}', this.value)"></td>
       <td class="num" style="color:var(--entrada)">${fmtCajas(ent)}</td>
       <td class="num" style="color:var(--salida)">${fmtCajas(sal)}</td>
-      <td class="num" style="font-weight:700">${fmtCajas(real)}</td>
+      <td class="num" style="font-weight:700; color:${esNegativo ? '#ff6b6b' : 'inherit'};">${esNegativo ? '⚠ ' : ''}${fmtCajas(real)}</td>
       <td><button class="btn danger" onclick="deleteProduct('${p.material}')" title="Eliminar producto">✕</button></td>
     </tr>`;
   }).join('');
@@ -846,7 +847,9 @@ function render(){
   document.getElementById('kpiInicial').textContent = fmtCajas(sumInicial);
   document.getElementById('kpiEntradas').textContent = fmtCajas(sumEnt);
   document.getElementById('kpiSalidas').textContent = fmtCajas(sumSal);
-  document.getElementById('kpiReal').textContent = fmtCajas(sumReal);
+  const kpiRealEl = document.getElementById('kpiReal');
+  kpiRealEl.textContent = fmtCajas(sumReal);
+  kpiRealEl.style.color = sumReal < 0 ? '#ff6b6b' : '';
 
   renderEntradasList();
   renderSalidasManualList();
@@ -1651,4 +1654,3 @@ if(!firebaseReady){ init(); }
 </script>
 </body>
 </html>
-
